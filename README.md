@@ -56,7 +56,7 @@ A lightweight proxy that routes Claude Code's Anthropic API calls to **NVIDIA NI
 ### Clone & Configure
 
 ```bash
-git clone https://github.com/Alishahryar1/free-claude-code.git
+git clone https://github.com/Rishurajgautam24/free-claude-code.git
 cd free-claude-code
 cp .env.example .env
 ```
