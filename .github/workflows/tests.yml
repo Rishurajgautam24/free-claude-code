@@ -1,51 +1,156 @@
+# Branch protection: require every status check this workflow reports, for example:
+#   Ban suppressions and legacy annotations
+#   ruff-format, ruff-check, ty
+#   Version policy
+#   pytest (Linux), pytest (Windows), pytest (macOS)
+#   playwright (Linux), playwright (Windows), playwright (macOS)
+# GitHub may prefix with the workflow name (e.g. "CI / ruff-format"); use the names the branch protection UI offers after a run.
+
 name: CI
 
+env:
+  CI_UV_VERSION: "0.12.13"
+  UV_MALWARE_CHECK: "1"
+  UV_PREVIEW_FEATURES: "malware-check"
+
 on:
-  push:
-    branches: [main, master]
   pull_request:
-    branches: [main, master]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  checks:
+  no-suppressions-or-legacy-annotations:
+    name: Ban suppressions and legacy annotations
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.ref }}
           repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
-          fetch-depth: 1
+          fetch-depth: 0
 
-      - name: "Fail on type: ignore (no suppressions allowed)"
+      - name: "Fail on type ignores and legacy future annotations"
         run: |
-          if grep -rE '# type: ignore|# ty: ignore' --include='*.py' . --exclude-dir=.venv --exclude-dir=.git; then
-            echo "::error::type: ignore / ty: ignore comments are not allowed. Fix the underlying type errors instead."
+          if grep -rE '# type: ignore|# ty: ignore|from __future__ import annotations' --include='*.py' . --exclude-dir=.venv --exclude-dir=.git; then
+            echo "::error::type: ignore / ty: ignore comments and legacy future annotations are not allowed. Fix the underlying type/import issue instead."
             exit 1
           fi
           exit 0
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@eac588ad8def6316056a12d4907a9d4d84ff7a3b
+  quality:
+    name: ${{ matrix.id }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: ruff-format
+            run: uv run --locked ruff format --check
+          - id: ruff-check
+            run: uv run --locked ruff check
+          - id: ty
+            run: uv run --locked ty check
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          version: "0.10.4"
-          enable-cache: true
-          cache-python: true
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          fetch-depth: 0
 
-      - name: Format check
-        run: uv run ruff format --check
+      - name: Set up CI environment
+        uses: ./.github/actions/ci-environment
+        with:
+          uv-version: ${{ env.CI_UV_VERSION }}
+          runner-label: ubuntu-latest
 
-      - name: Style check
-        run: uv run ruff check
+      - name: Run
+        run: ${{ matrix.run }}
 
-      - name: Type check
-        run: uv run ty check
+  pytest:
+    name: pytest (${{ matrix.os }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: Linux
+            runner: ubuntu-latest
+          - os: Windows
+            runner: windows-latest
+          - os: macOS
+            runner: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          fetch-depth: 0
 
-      - name: Run tests
-        run: uv run pytest -v --tb=short
+      - name: Set up CI environment
+        uses: ./.github/actions/ci-environment
+        with:
+          uv-version: ${{ env.CI_UV_VERSION }}
+          runner-label: ${{ matrix.runner }}
+          prepare-node: "true"
+
+      - name: Run pytest
+        run: uv run --locked pytest -v --tb=short -o thread_dump_timeout=15 --durations=50
+
+  playwright:
+    name: playwright (${{ matrix.os }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: Linux
+            runner: ubuntu-latest
+          - os: Windows
+            runner: windows-latest
+          - os: macOS
+            runner: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          fetch-depth: 0
+
+      - name: Set up CI environment
+        uses: ./.github/actions/ci-environment
+        with:
+          uv-version: ${{ env.CI_UV_VERSION }}
+          runner-label: ${{ matrix.runner }}
+
+      - name: Install Chromium
+        run: uv run --locked playwright install --only-shell ${{ matrix.os == 'Linux' && '--with-deps chromium' || 'chromium' }}
+
+      - name: Run Playwright
+        run: >-
+          uv run --locked pytest e2e -v --tb=short
+          -o thread_dump_timeout=10 --durations=20
+          --tracing=retain-on-failure --screenshot=only-on-failure
+          --full-page-screenshot --output=test-results
+
+      - name: Upload Playwright failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: playwright-results-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7

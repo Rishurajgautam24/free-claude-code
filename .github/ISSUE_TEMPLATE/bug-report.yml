@@ -1,0 +1,20 @@
+name: Problem after installation
+description: Report a problem using Free Claude Code after installing it.
+labels:
+  - bug
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the issue
+      description: Describe what happened, what you expected, and how to reproduce it. Include the provider, model, and harness you were using when relevant. Reports missing relevant details may be closed. You can attach screenshots here.
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: FCC doctor output
+      description: Run `fcc-doctor` and paste the JSON it copies to your clipboard. If copying is unavailable, copy the printed JSON from your terminal.
+      render: json
+    validations:
+      required: true

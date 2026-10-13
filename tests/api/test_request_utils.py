@@ -1,17 +1,22 @@
-"""Tests for api/request_utils.py module."""
+"""Tests for API request detection and token counting helpers."""
 
-from unittest.mock import MagicMock
+import json
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from api.command_utils import extract_command_prefix
-from api.detection import (
+from free_claude_code.api.command_utils import extract_command_prefix
+from free_claude_code.api.detection import (
     is_prefix_detection_request,
     is_quota_check_request,
     is_title_generation_request,
 )
-from api.models.anthropic import Message, MessagesRequest
-from api.request_utils import get_token_count
+from free_claude_code.core.anthropic import get_token_count
+from free_claude_code.core.anthropic.models import (
+    Message,
+    MessagesRequest,
+    SystemContent,
+)
 
 
 class TestQuotaCheckRequest:
@@ -114,14 +119,19 @@ class TestTitleGenerationRequest:
 
     def _title_gen_system(self) -> list[MagicMock]:
         block = MagicMock()
-        block.text = "Analyze if this message indicates a new conversation topic. If it does, extract a 2-3 word title."
+        block.text = (
+            "Generate a concise, sentence-case title (3-7 words) that captures the "
+            "main topic or goal of this coding session. Return JSON with a single "
+            '"title" field.'
+        )
         return [block]
 
     def test_title_generation_detected_via_system(self):
-        """Title gen detected by system prompt containing topic/title keywords."""
+        """Title gen detected by session title system prompt (sentence-case / JSON)."""
         req = MagicMock(spec=MessagesRequest)
         req.system = self._title_gen_system()
         req.tools = None
+        req.messages = []
 
         assert is_title_generation_request(req) is True
 
@@ -130,6 +140,7 @@ class TestTitleGenerationRequest:
         req = MagicMock(spec=MessagesRequest)
         req.system = self._title_gen_system()
         req.tools = [MagicMock()]
+        req.messages = []
 
         assert is_title_generation_request(req) is False
 
@@ -138,6 +149,7 @@ class TestTitleGenerationRequest:
         req = MagicMock(spec=MessagesRequest)
         req.system = None
         req.tools = None
+        req.messages = []
 
         assert is_title_generation_request(req) is False
 
@@ -148,8 +160,20 @@ class TestTitleGenerationRequest:
         req = MagicMock(spec=MessagesRequest)
         req.system = [block]
         req.tools = None
+        req.messages = []
 
         assert is_title_generation_request(req) is False
+
+    def test_title_generation_return_json_coding_session_branch(self):
+        """JSON title field + session wording matches without sentence-case phrase."""
+        block = MagicMock()
+        block.text = 'Return JSON with a single "title" field for this coding session.'
+        req = MagicMock(spec=MessagesRequest)
+        req.system = [block]
+        req.tools = None
+        req.messages = []
+
+        assert is_title_generation_request(req) is True
 
 
 class TestExtractCommandPrefix:
@@ -321,6 +345,14 @@ class TestGetTokenCount:
         # "Hello world" is ~2-3 tokens plus overhead
         assert count >= 3
 
+    def test_special_token_text_is_counted_as_plain_text(self):
+        """Tiktoken special-token strings should not break token estimates."""
+        msg = MagicMock()
+        msg.content = "<|endoftext|>"
+
+        count = get_token_count([msg], system="<|endoftext|>")
+        assert count > 0
+
     def test_message_with_system_prompt(self):
         """Test token count includes system prompt."""
         msg = MagicMock()
@@ -428,6 +460,16 @@ class TestGetTokenCount:
         # Double message should have more tokens (including overhead)
         assert count_double > count_single
 
+    def test_inline_system_message_contributes_to_token_count(self):
+        """Mid-conversation system content remains part of the counted transcript."""
+        user_message = Message(role="user", content="Hello")
+        inline_system = Message(role="system", content="New instructions")
+
+        without_inline_system = get_token_count([user_message])
+        with_inline_system = get_token_count([user_message, inline_system])
+
+        assert with_inline_system > without_inline_system
+
     def test_per_message_overhead_four_tokens(self):
         """Per-message overhead is 4 tokens (was 3)."""
         msg = MagicMock()
@@ -444,14 +486,16 @@ class TestGetTokenCount:
         count_with_sys = get_token_count([msg], system="You are helpful")
         assert count_with_sys >= count_no_sys + 4
 
-    def test_system_as_list_of_dicts(self):
-        """System blocks as dicts (not objects) are counted."""
+    def test_system_as_typed_content_blocks(self):
+        """Typed system content blocks are counted."""
         msg = MagicMock()
         msg.content = "Hi"
         count_no_sys = get_token_count([msg])
-        system_dicts = [{"type": "text", "text": "System prompt from dict"}]
-        count_with_dict_sys = get_token_count([msg], system=system_dicts)
-        assert count_with_dict_sys > count_no_sys
+        system_blocks = [
+            SystemContent(type="text", text="System prompt from typed block")
+        ]
+        count_with_system = get_token_count([msg], system=system_blocks)
+        assert count_with_system > count_no_sys
 
     def test_tool_use_includes_id(self):
         """Tool use blocks count id field."""
@@ -506,21 +550,91 @@ class TestGetTokenCount:
         count = get_token_count([msg])
         assert count >= 85
 
-    def test_known_payload_estimate_range(self):
-        """Known payload produces estimate within expected range (validation harness)."""
-        import tiktoken
+    def test_image_in_tool_result_costs_the_same_as_a_top_level_image(self):
+        """A tool-returned image (Read on a PNG, an MCP screenshot) is priced as an image.
 
-        enc = tiktoken.get_encoding("cl100k_base")
+        Serializing it with the rest of the tool result counted its base64 payload as
+        text: a 300 KB screenshot came out near 215k tokens instead of about 100.
+        """
+        image = {
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": "image/png",
+                "data": "A" * 300_000,
+            },
+        }
+        text = {"type": "text", "text": "Screenshot captured"}
+
+        def user_message(*blocks):
+            msg = MagicMock()
+            msg.content = list(blocks)
+            return msg
+
+        def tool_result(*parts):
+            return user_message(
+                {"type": "tool_result", "tool_use_id": "t1", "content": list(parts)}
+            )
+
+        def image_cost(wrap):
+            return get_token_count([wrap(text, image)]) - get_token_count([wrap(text)])
+
+        assert image_cost(tool_result) == image_cost(user_message)
+        assert image_cost(tool_result) < 1_000
+
+    @pytest.mark.parametrize("data", [12345, ["a"], {"x": 1}])
+    def test_tool_result_image_with_non_string_data_gets_the_flat_cost(self, data):
+        """Tool-result content is not validated, so image data can be any JSON value.
+
+        A number used to reach ``len()`` and turn count_tokens into an HTTP 500.
+        """
+        image = {"type": "image", "source": {"type": "base64", "data": data}}
+        msg = MagicMock()
+        msg.content = [{"type": "tool_result", "tool_use_id": "t1", "content": [image]}]
+        no_data = MagicMock()
+        no_data.content = [
+            {
+                "type": "tool_result",
+                "tool_use_id": "t1",
+                "content": [{"type": "image", "source": {"type": "base64"}}],
+            }
+        ]
+
+        assert get_token_count([msg]) == get_token_count([no_data])
+
+    @pytest.mark.parametrize(
+        "parts",
+        [
+            [{"type": "text", "text": "line one"}, {"type": "text", "text": "two"}],
+            [],
+        ],
+    )
+    def test_image_free_tool_result_list_is_counted_as_before(self, parts):
+        """Only images leave the serialized payload; image-free results are unchanged."""
+        msg = MagicMock()
+        msg.content = [{"type": "tool_result", "tool_use_id": "t1", "content": parts}]
+
+        with patch(
+            "free_claude_code.core.anthropic.tokens.estimate_text_tokens",
+            side_effect=len,
+        ):
+            count = get_token_count([msg])
+
+        assert count == len(json.dumps(parts)) + len("t1") + 8 + 4
+
+    def test_known_payload_structural_overhead(self):
+        """Protocol overhead remains separate from plain-text estimation."""
         system_text = "You are a helpful assistant."
         user_text = "Hello, how are you?"
-        sys_tokens = len(enc.encode(system_text))
-        user_tokens = len(enc.encode(user_text))
-        # Min: content tokens + system overhead (4) + per-msg overhead (4)
-        expected_min = sys_tokens + user_tokens + 4 + 4
         msg = MagicMock()
         msg.content = user_text
-        count = get_token_count([msg], system=system_text)
-        assert count >= expected_min, f"count={count} < expected_min={expected_min}"
+        with patch(
+            "free_claude_code.core.anthropic.tokens.estimate_text_tokens",
+            side_effect=len,
+        ):
+            count = get_token_count([msg], system=system_text)
+
+        assert count == len(system_text) + len(user_text) + 4 + 4
 
 
 # --- Parametrized Edge Case Tests ---
