@@ -1,0 +1,34 @@
+@echo off
+setlocal
+
+echo.
+echo ==========================================
+echo              STOPPING FCC
+echo ==========================================
+echo.
+
+echo Stopping FCC Claude...
+
+taskkill /F /IM fcc-claude.exe >nul 2>&1
+taskkill /F /IM claude.exe >nul 2>&1
+
+echo Stopping FCC Server...
+
+taskkill /F /IM fcc-server.exe >nul 2>&1
+
+:: Check port 8082 as fallback
+
+for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":8082" ^| findstr "LISTENING"') do (
+    echo Closing FCC Server on port 8082 - PID %%P
+    taskkill /F /PID %%P >nul 2>&1
+)
+
+echo.
+echo ==========================================
+echo              FCC STOPPED
+echo ==========================================
+echo.
+
+timeout /t 2 /nobreak >nul
+
+exit /b 0
