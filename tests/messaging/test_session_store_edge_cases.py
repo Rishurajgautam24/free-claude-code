@@ -1,6 +1,7 @@
 """Edge case tests for messaging/session.py SessionStore."""
 
 import json
+import os
 from unittest.mock import patch
 
 import pytest
@@ -19,13 +20,21 @@ class TestSessionStoreLoadEdgeCases:
     """Tests for loading corrupted/malformed data."""
 
     def test_load_corrupted_json(self, tmp_path):
-        """Corrupted JSON file is handled gracefully (logs error, starts empty)."""
+        """Corrupted file: start empty, but keep it aside instead of overwriting it."""
         path = str(tmp_path / "sessions.json")
         with open(path, "w") as f:
             f.write("{invalid json")
 
         store = SessionStore(storage_path=path)
         assert len(store._trees) == 0
+        (backup,) = [n for n in os.listdir(tmp_path) if ".corrupt-" in n]
+        with open(tmp_path / backup) as f:
+            assert f.read() == "{invalid json"
+
+        store.save_tree("r1", {"root_id": "r1", "nodes": {"r1": {}}})
+        store._write_data(store._snapshot())
+        with open(tmp_path / backup) as f:
+            assert f.read() == "{invalid json"  # still recoverable
 
     def test_load_truncated_json(self, tmp_path):
         """Truncated JSON file is handled gracefully."""
@@ -81,13 +90,22 @@ class TestSessionStoreSaveEdgeCases:
     """Tests for save failure handling."""
 
     def test_save_io_error_handled(self, tmp_store):
-        """Write failure in _write_data() raises (callers handle the error)."""
+        """A write that fails midway raises and leaves the previous file intact."""
         tmp_store.save_tree("r1", {"root_id": "r1", "nodes": {"r1": {}}})
+        tmp_store._write_data(tmp_store._snapshot())
+        with open(tmp_store.storage_path) as f:
+            before = f.read()
+
         with (
-            patch("builtins.open", side_effect=OSError("disk full")),
+            patch("messaging.session.json.dump", side_effect=OSError("disk full")),
             pytest.raises(OSError),
         ):
-            tmp_store._write_data(tmp_store._snapshot())
+            tmp_store._write_data({"trees": {}})
+
+        with open(tmp_store.storage_path) as f:
+            assert f.read() == before
+        directory = os.path.dirname(tmp_store.storage_path)
+        assert not [n for n in os.listdir(directory) if n.endswith(".tmp")]
 
 
 class TestSessionStoreClearAll:

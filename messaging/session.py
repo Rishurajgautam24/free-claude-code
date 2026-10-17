@@ -5,8 +5,10 @@ Provides persistent storage for mapping platform messages to Claude CLI session 
 and message trees for conversation continuation.
 """
 
+import contextlib
 import json
 import os
+import tempfile
 import threading
 from datetime import UTC, datetime
 from typing import Any
@@ -93,7 +95,13 @@ class SessionStore:
                 f"{sum(len(v) for v in self._message_log.values())} msg_ids from {self.storage_path}"
             )
         except Exception as e:
-            logger.error(f"Failed to load sessions: {e}")
+            # Keep the unreadable file: the next save would otherwise overwrite it.
+            backup = f"{self.storage_path}.corrupt-{datetime.now(UTC):%Y%m%dT%H%M%S}"
+            try:
+                os.replace(self.storage_path, backup)
+            except OSError:
+                backup = "(could not move it)"
+            logger.error(f"Failed to load sessions: {e}. Moved it to {backup}")
 
     def _snapshot(self) -> dict:
         """Snapshot current state for serialization. Caller must hold self._lock."""
@@ -104,9 +112,23 @@ class SessionStore:
         }
 
     def _write_data(self, data: dict) -> None:
-        """Write data dict to disk. Must be called WITHOUT holding self._lock."""
-        with open(self.storage_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
+        """Atomically write data to disk. Must be called WITHOUT holding self._lock.
+
+        Writes a temp file and renames it over the store, so a crash mid-write
+        (or two concurrent saves) never leaves a truncated sessions file.
+        """
+        directory = os.path.dirname(os.path.abspath(self.storage_path))
+        fd, tmp_path = tempfile.mkstemp(dir=directory, suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, self.storage_path)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.remove(tmp_path)
+            raise
 
     def _schedule_save(self) -> None:
         """Schedule a debounced save. Caller must hold self._lock."""
