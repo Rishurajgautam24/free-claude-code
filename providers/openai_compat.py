@@ -79,28 +79,26 @@ class OpenAICompatibleProvider(BaseProvider):
         if tc_index < 0:
             tc_index = len(sse.blocks.tool_states)
 
-        fn_delta = tc.get("function", {})
+        fn_delta = tc.get("function") or {}
         incoming_name = fn_delta.get("name")
-        if incoming_name is not None:
-            sse.blocks.register_tool_name(tc_index, incoming_name)
+        if incoming_name is not None or tc_index not in sse.blocks.tool_states:
+            sse.blocks.register_tool_name(tc_index, incoming_name or "")
+        state = sse.blocks.tool_states[tc_index]
+        if tc.get("id") and not state.started:
+            state.tool_id = tc["id"]
 
-        state = sse.blocks.tool_states.get(tc_index)
-        if state is None or not state.started:
-            name = state.name if state else ""
-            if name or tc.get("id"):
-                tool_id = tc.get("id") or f"tool_{uuid.uuid4()}"
-                yield sse.start_tool_block(tc_index, tool_id, name)
-
-        args = fn_delta.get("arguments", "")
+        # Start the block on the first arguments: by then the name, which some
+        # providers send after the id or in fragments, is complete.
+        args = fn_delta.get("arguments")
         if args:
-            state = sse.blocks.tool_states.get(tc_index)
-            if state is None or not state.started:
-                tool_id = tc.get("id") or f"tool_{uuid.uuid4()}"
-                name = (state.name if state else None) or "tool_call"
-                yield sse.start_tool_block(tc_index, tool_id, name)
-                state = sse.blocks.tool_states.get(tc_index)
+            if not state.started:
+                yield sse.start_tool_block(
+                    tc_index,
+                    state.tool_id or f"tool_{uuid.uuid4()}",
+                    state.name or "tool_call",
+                )
 
-            current_name = state.name if state else ""
+            current_name = state.name
             if current_name == "Task":
                 parsed = sse.blocks.buffer_task_args(tc_index, args)
                 if parsed is not None:
@@ -158,6 +156,7 @@ class OpenAICompatibleProvider(BaseProvider):
         heuristic_parser = HeuristicToolParser()
 
         finish_reason = None
+        text_tool_calls = 0
         usage_info = None
         error_occurred = False
         error_message = ""
@@ -175,13 +174,14 @@ class OpenAICompatibleProvider(BaseProvider):
                         continue
 
                     choice = chunk.choices[0]
-                    delta = choice.delta
-                    if delta is None:
-                        continue
-
+                    # Read before the delta check: some providers end with delta=None.
                     if choice.finish_reason:
                         finish_reason = choice.finish_reason
                         logger.debug("{} finish_reason: {}", tag, finish_reason)
+
+                    delta = choice.delta
+                    if delta is None:
+                        continue
 
                     # Handle reasoning_content (OpenAI extended format)
                     reasoning = getattr(delta, "reasoning_content", None)
@@ -212,6 +212,7 @@ class OpenAICompatibleProvider(BaseProvider):
                                     yield sse.emit_text_delta(filtered_text)
 
                                 for tool_use in detected_tools:
+                                    text_tool_calls += 1
                                     for event in sse.close_content_blocks():
                                         yield event
 
@@ -238,12 +239,13 @@ class OpenAICompatibleProvider(BaseProvider):
                         for event in sse.close_content_blocks():
                             yield event
                         for tc in delta.tool_calls:
+                            fn = tc.function  # None on id-only deltas
                             tc_info = {
                                 "index": tc.index,
                                 "id": tc.id,
                                 "function": {
-                                    "name": tc.function.name,
-                                    "arguments": tc.function.arguments,
+                                    "name": fn.name if fn else None,
+                                    "arguments": fn.arguments if fn else None,
                                 },
                             }
                             for event in self._process_tool_call(tc_info, sse):
@@ -287,6 +289,7 @@ class OpenAICompatibleProvider(BaseProvider):
                 yield sse.emit_text_delta(remaining.content)
 
         for tool_use in heuristic_parser.flush():
+            text_tool_calls += 1
             for event in sse.close_content_blocks():
                 yield event
 
@@ -317,6 +320,13 @@ class OpenAICompatibleProvider(BaseProvider):
                 yield event
             yield sse.emit_text_delta(" ")
 
+        # Tools that never received arguments still need their block.
+        for index, state in list(sse.blocks.tool_states.items()):
+            if not state.started and state.name and not error_occurred:
+                yield sse.start_tool_block(
+                    index, state.tool_id or f"tool_{uuid.uuid4()}", state.name
+                )
+
         for event in self._flush_task_arg_buffers(sse):
             yield event
 
@@ -337,5 +347,9 @@ class OpenAICompatibleProvider(BaseProvider):
                     provider_input,
                     provider_input - input_tokens,
                 )
-        yield sse.message_delta(map_stop_reason(finish_reason), output_tokens)
+        stop_reason = map_stop_reason(finish_reason)
+        # Text-parsed tool calls, and some providers' native ones, end with "stop".
+        if stop_reason == "end_turn" and (text_tool_calls or sse.blocks.tool_states):
+            stop_reason = "tool_use"
+        yield sse.message_delta(stop_reason, output_tokens)
         yield sse.message_stop()

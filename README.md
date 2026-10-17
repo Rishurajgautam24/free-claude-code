@@ -34,7 +34,7 @@ A lightweight proxy that routes Claude Code's Anthropic API calls to **NVIDIA NI
 | **3 Providers**            | NVIDIA NIM, OpenRouter (hundreds of models), LM Studio (local & offline)                                             |
 | **Per-Model Mapping**      | Route Opus / Sonnet / Haiku requests to different models and providers. Mix providers freely per model               |
 | **Thinking Token Support** | Parses `<think>` tags and `reasoning_content` into native Claude thinking blocks                                     |
-| **Heuristic Tool Parser**  | Models outputting tool calls as text are auto-parsed into structured tool use                                        |
+| **Robust Tool Calls**      | Native and text-written tool calls become real tool use, even when providers stream ids and names in pieces          |
 | **Request Optimization**   | 5 categories of trivial API calls intercepted locally, saving quota and latency                                      |
 | **Discord Bot**            | Remote autonomous coding with tree-based threading, session persistence, and live progress (Telegram also supported) |
 | **Fallback Chains**        | `MODEL_SONNET="a,b,c"`: if a model fails before answering, the next one takes over, seamlessly                       |
@@ -251,6 +251,7 @@ alias claude-kimi='ANTHROPIC_BASE_URL="http://localhost:8082" ANTHROPIC_AUTH_TOK
 - **Request optimization**: 5 categories of trivial requests (quota probes, title generation, prefix detection, suggestions, filepath extraction) are intercepted and responded to instantly without using API quota
 - **Format translation**: real requests are translated from Anthropic format to the provider's OpenAI-compatible format and streamed back
 - **Thinking tokens**: `<think>` tags and `reasoning_content` fields are converted into native Claude thinking blocks so Claude Code renders them correctly
+- **Tool calls**: native tool calls and tool calls a model writes as text become Anthropic `tool_use` blocks; a turn with tool calls always ends with `stop_reason: tool_use`
 - **Fallback chains**: a model that fails before answering is skipped for the next model in its `MODEL*` chain
 - **Keepalive**: the stream carries an SSE `ping` every 15s, so Claude Code's idle watchdog never cuts off a slow model
 
