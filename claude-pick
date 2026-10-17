@@ -133,10 +133,12 @@ case "$provider" in
         prompt="Select a NVIDIA NIM model> "
         ;;
     open_router|openrouter)
+        provider="open_router"
         models="$(get_openrouter_models)"
         prompt="Select an OpenRouter model> "
         ;;
     lmstudio|lm_studio|lm-studio)
+        provider="lmstudio"
         models="$(get_lmstudio_models)"
         prompt="Select an LM Studio model> "
         ;;
@@ -161,4 +163,5 @@ if [[ -z "${model:-}" ]]; then
 fi
 
 echo "Launching Claude with provider: $provider, model: $model" >&2
-ANTHROPIC_AUTH_TOKEN="freecc:$model" ANTHROPIC_BASE_URL="$BASE_URL" exec claude "$@"
+token="${PROXY_AUTH_TOKEN:-$(read_env_value PROXY_AUTH_TOKEN)}"
+ANTHROPIC_AUTH_TOKEN="${token:-freecc}:$provider/$model" ANTHROPIC_BASE_URL="$BASE_URL" exec claude "$@"

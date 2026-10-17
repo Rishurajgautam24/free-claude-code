@@ -20,8 +20,10 @@ class CLISession:
         api_url: str,
         allowed_dirs: list[str] | None = None,
         plans_directory: str | None = None,
+        auth_token: str = "",
     ):
         self.workspace = os.path.normpath(os.path.abspath(workspace_path))
+        self.auth_token = auth_token
         self.api_url = api_url
         self.allowed_dirs = [os.path.normpath(d) for d in (allowed_dirs or [])]
         self.plans_directory = plans_directory
@@ -52,7 +54,9 @@ class CLISession:
             self._is_busy = True
             env = os.environ.copy()
 
-            if "ANTHROPIC_API_KEY" not in env:
+            if self.auth_token:
+                env["ANTHROPIC_API_KEY"] = env["ANTHROPIC_AUTH_TOKEN"] = self.auth_token
+            elif "ANTHROPIC_API_KEY" not in env:
                 env["ANTHROPIC_API_KEY"] = "sk-placeholder-key-for-proxy"
 
             env["ANTHROPIC_API_URL"] = self.api_url

@@ -7,6 +7,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .nim import NimSettings
 
+VALID_PROVIDERS = ("nvidia_nim", "open_router", "lmstudio")
+
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
@@ -100,9 +102,11 @@ class Settings(BaseSettings):
     allowed_dir: str = ""
 
     # ==================== Server ====================
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"
     port: int = 8082
     log_file: str = "server.log"
+    # Empty = no auth check. Clients send it as ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY.
+    proxy_auth_token: str = Field(default="", validation_alias="PROXY_AUTH_TOKEN")
 
     # Handle empty strings for optional string fields
     @field_validator(
@@ -132,15 +136,14 @@ class Settings(BaseSettings):
     def validate_model_format(cls, v: str | None) -> str | None:
         if v is None:
             return None
-        valid_providers = ("nvidia_nim", "open_router", "lmstudio")
         if "/" not in v:
             raise ValueError(
                 f"Model must be prefixed with provider type. "
-                f"Valid providers: {', '.join(valid_providers)}. "
+                f"Valid providers: {', '.join(VALID_PROVIDERS)}. "
                 f"Format: provider_type/model/name"
             )
         provider = v.split("/", 1)[0]
-        if provider not in valid_providers:
+        if provider not in VALID_PROVIDERS:
             raise ValueError(
                 f"Invalid provider: '{provider}'. "
                 f"Supported: 'nvidia_nim', 'open_router', 'lmstudio'"

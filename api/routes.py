@@ -13,7 +13,7 @@ from providers.common import get_user_facing_error_message
 from providers.exceptions import InvalidRequestError, ProviderError
 from providers.logging_utils import build_request_summary, log_request_compact
 
-from .dependencies import get_provider_for_type, get_settings
+from .dependencies import get_provider_for_type, get_settings, require_auth
 from .models.anthropic import MessagesRequest, TokenCountRequest
 from .models.responses import TokenCountResponse
 from .optimization_handlers import try_optimizations
@@ -30,10 +30,15 @@ async def create_message(
     request_data: MessagesRequest,
     raw_request: Request,
     settings: Settings = Depends(get_settings),
+    model_override: str | None = Depends(require_auth),
 ):
     """Create a message (always streaming)."""
 
     try:
+        if model_override:
+            request_data.resolved_provider_model = model_override
+            request_data.model = Settings.parse_model_name(model_override)
+
         if not request_data.messages:
             raise InvalidRequestError("messages cannot be empty")
 
@@ -77,7 +82,7 @@ async def create_message(
         ) from e
 
 
-@router.post("/v1/messages/count_tokens")
+@router.post("/v1/messages/count_tokens", dependencies=[Depends(require_auth)])
 async def count_tokens(request_data: TokenCountRequest):
     """Count tokens for a request."""
     request_id = f"req_{uuid.uuid4().hex[:12]}"
@@ -119,7 +124,7 @@ async def health():
     return {"status": "healthy"}
 
 
-@router.post("/stop")
+@router.post("/stop", dependencies=[Depends(require_auth)])
 async def stop_cli(request: Request):
     """Stop all CLI sessions and pending tasks."""
     handler = getattr(request.app.state, "message_handler", None)

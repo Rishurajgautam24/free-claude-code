@@ -28,6 +28,7 @@ class CLISessionManager:
         api_url: str,
         allowed_dirs: list[str] | None = None,
         plans_directory: str | None = None,
+        auth_token: str = "",
     ):
         """
         Initialize the session manager.
@@ -42,6 +43,7 @@ class CLISessionManager:
         self.api_url = api_url
         self.allowed_dirs = allowed_dirs or []
         self.plans_directory = plans_directory
+        self.auth_token = auth_token
 
         self._sessions: dict[str, CLISession] = {}
         self._pending_sessions: dict[str, CLISession] = {}
@@ -75,6 +77,7 @@ class CLISessionManager:
                 api_url=self.api_url,
                 allowed_dirs=self.allowed_dirs,
                 plans_directory=self.plans_directory,
+                auth_token=self.auth_token,
             )
             self._pending_sessions[temp_id] = new_session
             logger.info(f"Created new session: {temp_id}")
