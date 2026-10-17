@@ -402,7 +402,7 @@ Browse: [model.lmstudio.ai](https://model.lmstudio.ai)
 
 | Variable                          | Description                                                                        | Default                                           |
 | --------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------- |
-| `MODEL`                           | Fallback model (prefix format: `provider/model/name`; invalid prefix causes error) | `nvidia_nim/stepfun-ai/step-3.5-flash`            |
+| `MODEL`                           | Default model (`provider/model/name`); comma-separate a chain to fall back on errors | `nvidia_nim/stepfun-ai/step-3.5-flash`            |
 | `MODEL_OPUS`                      | Model for Claude Opus requests (optional, falls back to `MODEL`)                   | `nvidia_nim/z-ai/glm4.7`                          |
 | `MODEL_SONNET`                    | Model for Claude Sonnet requests (optional, falls back to `MODEL`)                 | `open_router/arcee-ai/trinity-large-preview:free` |
 | `MODEL_HAIKU`                     | Model for Claude Haiku requests (optional, falls back to `MODEL`)                  | `open_router/stepfun/step-3.5-flash:free`         |

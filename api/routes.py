@@ -3,6 +3,7 @@
 import json
 import traceback
 import uuid
+from collections.abc import AsyncIterator
 
 import anyio
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -65,6 +66,47 @@ class KeepAliveStreamingResponse(StreamingResponse):
             tg.cancel_scope.cancel()
 
 
+async def stream_with_fallback(
+    request_data: MessagesRequest,
+    models: list[str],
+    first_events: AsyncIterator[str],
+    input_tokens: int,
+    request_id: str,
+) -> AsyncIterator[str]:
+    """Relay `first_events`; if models[0] fails before any content, try the next model.
+
+    The last model streams its error to the client as usual.
+    """
+    for i, model in enumerate(models):
+        is_last = i == len(models) - 1
+        try:
+            events = first_events
+            if i:
+                provider = get_provider_for_type(Settings.parse_provider_type(model))
+                request_data.model = Settings.parse_model_name(model)
+                events = provider.stream_response(
+                    request_data,
+                    input_tokens=input_tokens,
+                    request_id=request_id,
+                    raise_before_output=not is_last,
+                )
+            async for event in events:
+                # The client already got message_start from the first attempt.
+                if i and event.startswith("event: message_start"):
+                    continue
+                yield event
+            return
+        except Exception as e:
+            if is_last:
+                raise
+            logger.warning(
+                "MODEL_FALLBACK: {} failed before output ({}), trying {}",
+                model,
+                get_user_facing_error_message(e),
+                models[i + 1],
+            )
+
+
 # =============================================================================
 # Routes
 # =============================================================================
@@ -89,11 +131,9 @@ async def create_message(
         if optimized is not None:
             return optimized
 
-        # Resolve provider from the model-aware mapping
-        provider_type = Settings.parse_provider_type(
-            request_data.resolved_provider_model or settings.model
-        )
-        provider = get_provider_for_type(provider_type)
+        # Resolve the provider of the first model now, so misconfiguration is a 503.
+        models = (request_data.resolved_provider_model or settings.model).split(",")
+        provider = get_provider_for_type(Settings.parse_provider_type(models[0]))
 
         request_id = f"req_{uuid.uuid4().hex[:12]}"
         log_request_compact(logger, request_id, request_data)
@@ -101,11 +141,15 @@ async def create_message(
         input_tokens = get_token_count(
             request_data.messages, request_data.system, request_data.tools
         )
+        first_events = provider.stream_response(
+            request_data,
+            input_tokens=input_tokens,
+            request_id=request_id,
+            raise_before_output=len(models) > 1,
+        )
         return KeepAliveStreamingResponse(
-            provider.stream_response(
-                request_data,
-                input_tokens=input_tokens,
-                request_id=request_id,
+            stream_with_fallback(
+                request_data, models, first_events, input_tokens, request_id
             ),
             media_type="text/event-stream",
             headers={

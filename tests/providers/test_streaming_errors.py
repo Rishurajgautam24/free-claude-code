@@ -323,6 +323,43 @@ class TestStreamingExceptionHandling:
         assert not other._rate_limiter.is_blocked()
 
 
+class TestRaiseBeforeOutput:
+    """raise_before_output lets the route fall back to another model."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("chunks", "should_raise"),
+        [([], True), ([_make_chunk(content="Hello ")], False)],
+        ids=["before_output", "after_output"],
+    )
+    async def test_raises_only_before_any_content(self, chunks, should_raise):
+        provider = _make_provider()
+        stream_mock = AsyncStreamMock(chunks, error=RuntimeError("Connection lost"))
+
+        with (
+            patch.object(
+                provider._client.chat.completions,
+                "create",
+                new_callable=AsyncMock,
+                return_value=stream_mock,
+            ),
+            patch.object(
+                provider._rate_limiter,
+                "wait_if_blocked",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+        ):
+            events = provider.stream_response(_make_request(), raise_before_output=True)
+            if should_raise:
+                with pytest.raises(Exception, match="Connection lost"):
+                    [e async for e in events]
+            else:
+                text = "".join([e async for e in events])
+                assert "Hello" in text
+                assert "Connection lost" in text
+
+
 class TestProcessToolCall:
     """Tests for _process_tool_call method."""
 

@@ -120,11 +120,12 @@ class OpenAICompatibleProvider(BaseProvider):
         input_tokens: int = 0,
         *,
         request_id: str | None = None,
+        raise_before_output: bool = False,
     ) -> AsyncIterator[str]:
         """Stream response in Anthropic SSE format."""
         with logger.contextualize(request_id=request_id):
             async for event in self._stream_response_impl(
-                request, input_tokens, request_id
+                request, input_tokens, request_id, raise_before_output
             ):
                 yield event
 
@@ -133,6 +134,7 @@ class OpenAICompatibleProvider(BaseProvider):
         request: Any,
         input_tokens: int,
         request_id: str | None,
+        raise_before_output: bool = False,
     ) -> AsyncIterator[str]:
         """Shared streaming implementation."""
         tag = self._provider_name
@@ -252,6 +254,8 @@ class OpenAICompatibleProvider(BaseProvider):
                 mapped_e = map_error(e)
                 if isinstance(mapped_e, RateLimitError):
                     self._rate_limiter.set_blocked(60)  # cool down this provider only
+                if raise_before_output and sse.blocks.next_index == 0:
+                    raise mapped_e from e
                 error_occurred = True
                 error_message = append_request_id(
                     get_user_facing_error_message(
