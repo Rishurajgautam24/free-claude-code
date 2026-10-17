@@ -297,6 +297,7 @@ alias claude-kimi='ANTHROPIC_BASE_URL="http://localhost:8082" ANTHROPIC_AUTH_TOK
 - **Images**: pasted images are sent as OpenAI `image_url` parts. If a model rejects them, the request is retried once without images and that model is remembered as text-only. Images inside tool results (e.g. `Read` on a PNG) become a short placeholder instead of raw base64
 - **Tool calls**: native tool calls and tool calls a model writes as text become Anthropic `tool_use` blocks; a turn with tool calls always ends with `stop_reason: tool_use`
 - **Fallback chains**: a model that fails before answering is skipped for the next model in its `MODEL*` chain
+- **Errors**: provider failures reach Claude Code as real Anthropic errors (an SSE `error` event, or an HTTP error status for `stream: false`), so Claude Code's own retries kick in instead of the error being shown as model output
 - **Keepalive**: the stream carries an SSE `ping` every 15s, so Claude Code's idle watchdog never cuts off a slow model
 
 ---

@@ -336,12 +336,12 @@ class SSEBuilder:
                 yield self.stop_tool_block(tool_index)
 
     # Error handling
-    def emit_error(self, error_message: str) -> Iterator[str]:
-        """Emit an error as a text block."""
-        error_index = self.blocks.allocate_index()
-        yield self.content_block_start(error_index, "text")
-        yield self.content_block_delta(error_index, "text_delta", error_message)
-        yield self.content_block_stop(error_index)
+    def error_event(self, error_type: str, message: str) -> str:
+        """Anthropic SSE error event; it ends the stream (Claude Code may retry)."""
+        return self._format_event(
+            "error",
+            {"type": "error", "error": {"type": error_type, "message": message}},
+        )
 
     # Accumulated content access
     @property

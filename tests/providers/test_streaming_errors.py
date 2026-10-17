@@ -112,11 +112,12 @@ class TestStreamingExceptionHandling:
         ):
             events = await _collect_stream(provider, request)
 
-        # Should have message_start, error text block, close blocks, message_delta, message_stop
+        # message_start, then an Anthropic error event that ends the stream
         event_text = "".join(events)
         assert "message_start" in event_text
         assert "API failed" in event_text
-        assert "message_stop" in event_text
+        assert "event: error" in event_text
+        assert "message_stop" not in event_text  # an error event ends the stream
 
     @pytest.mark.asyncio
     async def test_read_timeout_with_empty_message_emits_fallback(self):
@@ -149,7 +150,8 @@ class TestStreamingExceptionHandling:
         event_text = "".join(events)
         assert "timed out after" in event_text
         assert "request_id=req_timeout123" in event_text
-        assert "message_stop" in event_text
+        assert "event: error" in event_text
+        assert "message_stop" not in event_text  # an error event ends the stream
 
     @pytest.mark.asyncio
     async def test_error_after_partial_content(self):
@@ -179,7 +181,8 @@ class TestStreamingExceptionHandling:
         event_text = "".join(events)
         assert "Hello" in event_text
         assert "Connection lost" in event_text
-        assert "message_stop" in event_text
+        assert "event: error" in event_text
+        assert "message_stop" not in event_text  # an error event ends the stream
 
     @pytest.mark.asyncio
     async def test_empty_response_gets_space(self):
@@ -681,7 +684,7 @@ class TestStreamChunkEdgeCases:
 
     @pytest.mark.asyncio
     async def test_stream_generator_cleanup_on_exception(self):
-        """When stream raises mid-iteration, message_stop still emitted."""
+        """When stream raises mid-iteration, the stream ends with an error event."""
         provider = _make_provider()
         request = _make_request()
 
@@ -709,7 +712,8 @@ class TestStreamChunkEdgeCases:
         event_text = "".join(events)
         assert "Partial" in event_text
         assert "Connection reset" in event_text
-        assert "message_stop" in event_text
+        assert "event: error" in event_text
+        assert "message_stop" not in event_text  # an error event ends the stream
 
     def test_stream_malformed_tool_args_chunked(self):
         """Chunked tool args that never form valid JSON are flushed with {}."""

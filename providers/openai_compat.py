@@ -196,8 +196,6 @@ class OpenAICompatibleProvider(BaseProvider):
         finish_reason = None
         text_tool_calls = 0
         usage_info = None
-        error_occurred = False
-        error_message = ""
 
         async with self._rate_limiter.concurrency_slot():
             try:
@@ -294,7 +292,6 @@ class OpenAICompatibleProvider(BaseProvider):
                     self._rate_limiter.set_blocked(60)  # cool down this provider only
                 if raise_before_output and sse.blocks.next_index == 0:
                     raise mapped_e from e
-                error_occurred = True
                 error_message = append_request_id(
                     get_user_facing_error_message(
                         mapped_e, read_timeout_s=self._config.http_read_timeout
@@ -307,10 +304,12 @@ class OpenAICompatibleProvider(BaseProvider):
                     type(e).__name__,
                     req_tag,
                 )
-                for event in sse.close_content_blocks():
-                    yield event
-                for event in sse.emit_error(error_message):
-                    yield event
+                # Open blocks stay open: Claude Code keeps only completed blocks, so a
+                # half-streamed tool call is never run with cut-off arguments.
+                yield sse.error_event(
+                    getattr(mapped_e, "error_type", "api_error"), error_message
+                )
+                return
 
         # Flush remaining content
         remaining = think_parser.flush()
@@ -347,18 +346,14 @@ class OpenAICompatibleProvider(BaseProvider):
             )
             yield sse.content_block_stop(block_idx)
 
-        if (
-            not error_occurred
-            and sse.blocks.text_index == -1
-            and not sse.blocks.tool_states
-        ):
+        if sse.blocks.text_index == -1 and not sse.blocks.tool_states:
             for event in sse.ensure_text_block():
                 yield event
             yield sse.emit_text_delta(" ")
 
         # Tools that never received arguments still need their block.
         for index, state in list(sse.blocks.tool_states.items()):
-            if not state.started and state.name and not error_occurred:
+            if not state.started and state.name:
                 yield sse.start_tool_block(
                     index, state.tool_id or f"tool_{uuid.uuid4()}", state.name
                 )
