@@ -37,7 +37,10 @@ A lightweight proxy that routes Claude Code's Anthropic API calls to **NVIDIA NI
 | **Heuristic Tool Parser**  | Models outputting tool calls as text are auto-parsed into structured tool use                                        |
 | **Request Optimization**   | 5 categories of trivial API calls intercepted locally, saving quota and latency                                      |
 | **Discord Bot**            | Remote autonomous coding with tree-based threading, session persistence, and live progress (Telegram also supported) |
-| **Smart Rate Limiting**    | Proactive rolling-window throttle + reactive 429 exponential backoff + optional concurrency cap, per provider          |
+| **Fallback Chains**        | `MODEL_SONNET="a,b,c"`: if a model fails before answering, the next one takes over, seamlessly                       |
+| **Smart Rate Limiting**    | Rolling-window throttle, 429 backoff and a concurrency cap, separately per provider                                  |
+| **Stream Keepalive**       | SSE pings while a slow model thinks, so Claude Code never drops a quiet stream                                       |
+| **Secure by Default**      | Listens on localhost only; optional `PROXY_AUTH_TOKEN`; bots ignore everyone not on the allowlist                    |
 | **Subagent Control**       | Task tool interception forces `run_in_background=False`. No runaway subagents                                        |
 | **Extensible**             | Clean `BaseProvider` and `MessagingPlatform` ABCs. Add new providers or platforms easily                             |
 
@@ -106,7 +109,7 @@ MODEL="lmstudio/unsloth/GLM-4.7-Flash-GGUF"         # fallback
 <details>
 <summary><b>Mix providers</b> (use multiple providers together)</summary>
 
-Each `MODEL_*` variable can use a different provider. `MODEL` is the fallback for unrecognized Claude models.
+Each `MODEL_*` variable can use a different provider. `MODEL` is the default for Claude models without their own setting.
 
 ```dotenv
 NVIDIA_NIM_API_KEY="nvapi-your-key-here"
@@ -115,8 +118,23 @@ OPENROUTER_API_KEY="sk-or-your-key-here"
 MODEL_OPUS="nvidia_nim/moonshotai/kimi-k2.5"
 MODEL_SONNET="open_router/deepseek/deepseek-r1-0528:free"
 MODEL_HAIKU="lmstudio/unsloth/GLM-4.7-Flash-GGUF"
-MODEL="nvidia_nim/z-ai/glm4.7"                      # fallback
+MODEL="nvidia_nim/z-ai/glm4.7"                      # default
 ```
+
+</details>
+
+<details>
+<summary><b>Fallback chains</b> (never get stuck on a down or rate-limited model)</summary>
+
+Any `MODEL*` variable can list several models, separated by commas. They are tried in order: if a model fails **before it sends any output** (server error, rate limit after retries, timeout, connection error), the request is replayed on the next one. Claude Code just sees a normal answer.
+
+```dotenv
+MODEL_SONNET="nvidia_nim/z-ai/glm4.7,open_router/arcee-ai/trinity-large-preview:free,lmstudio/qwen3-coder"
+```
+
+- Mix providers freely: each one keeps its own rate limits, so a 429 on NIM doesn't slow down OpenRouter.
+- An error after the answer has started, or on the last model, is shown as usual.
+- The proxy logs every switch as `MODEL_FALLBACK` in `server.log`.
 
 </details>
 
@@ -136,7 +154,23 @@ ANTHROPIC_AUTH_TOKEN="freecc" ANTHROPIC_BASE_URL="http://localhost:8082" claude
 
 That's it! Claude Code now uses your configured provider for free.
 
-> The proxy only accepts connections from this machine. To use it from WSL, Docker or another device, set `PROXY_AUTH_TOKEN` in `.env`, start the server with `--host 0.0.0.0`, and send the same token as `ANTHROPIC_AUTH_TOKEN`.
+<details>
+<summary><b>Remote access & security</b> (WSL, Docker, another machine)</summary>
+
+By default the proxy only accepts connections from this machine. To reach it from elsewhere:
+
+```dotenv
+PROXY_AUTH_TOKEN="pick-a-long-random-string"
+```
+
+```bash
+uv run uvicorn server:app --host 0.0.0.0 --port 8082
+ANTHROPIC_AUTH_TOKEN="pick-a-long-random-string" ANTHROPIC_BASE_URL="http://<proxy-ip>:8082" claude
+```
+
+When `PROXY_AUTH_TOKEN` is set, every API call must send it (`Authorization: Bearer` or `x-api-key`); `/health` stays open. Never expose the proxy without it: anyone who can reach it could spend your provider quota.
+
+</details>
 
 <details>
 <summary><b>VSCode Extension Setup</b></summary>
@@ -181,6 +215,8 @@ alias claude-pick="/absolute/path/to/free-claude-code/claude-pick"
 
 Then reload your shell (`source ~/.zshrc` or `source ~/.bashrc`) and run `claude-pick` to pick a model and launch Claude.
 
+Under the hood the picker sends the model in the token as `<token>:provider/model` (the token is `PROXY_AUTH_TOKEN`, or `freecc` when that's unset), which overrides the model from `.env` for that session.
+
 **Skip the picker with a fixed model** (no picker needed):
 
 ```bash
@@ -215,6 +251,8 @@ alias claude-kimi='ANTHROPIC_BASE_URL="http://localhost:8082" ANTHROPIC_AUTH_TOK
 - **Request optimization**: 5 categories of trivial requests (quota probes, title generation, prefix detection, suggestions, filepath extraction) are intercepted and responded to instantly without using API quota
 - **Format translation**: real requests are translated from Anthropic format to the provider's OpenAI-compatible format and streamed back
 - **Thinking tokens**: `<think>` tags and `reasoning_content` fields are converted into native Claude thinking blocks so Claude Code renders them correctly
+- **Fallback chains**: a model that fails before answering is skipped for the next model in its `MODEL*` chain
+- **Keepalive**: the stream carries an SSE `ping` every 15s, so Claude Code's idle watchdog never cuts off a slow model
 
 ---
 
@@ -400,40 +438,41 @@ Browse: [model.lmstudio.ai](https://model.lmstudio.ai)
 
 ## Configuration
 
-| Variable                          | Description                                                                        | Default                                           |
-| --------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------- |
-| `MODEL`                           | Default model (`provider/model/name`); comma-separate a chain to fall back on errors | `nvidia_nim/stepfun-ai/step-3.5-flash`            |
-| `MODEL_OPUS`                      | Model for Claude Opus requests (optional, falls back to `MODEL`)                   | `nvidia_nim/z-ai/glm4.7`                          |
-| `MODEL_SONNET`                    | Model for Claude Sonnet requests (optional, falls back to `MODEL`)                 | `open_router/arcee-ai/trinity-large-preview:free` |
-| `MODEL_HAIKU`                     | Model for Claude Haiku requests (optional, falls back to `MODEL`)                  | `open_router/stepfun/step-3.5-flash:free`         |
-| `NVIDIA_NIM_API_KEY`              | NVIDIA API key (NIM provider)                                                      | required                                          |
-| `OPENROUTER_API_KEY`              | OpenRouter API key (OpenRouter provider)                                           | required                                          |
-| `LM_STUDIO_BASE_URL`              | LM Studio server URL                                                               | `http://localhost:1234/v1`                        |
-| `PROXY_AUTH_TOKEN`                | Token clients must send as `ANTHROPIC_AUTH_TOKEN` (empty = no check)               | `""`                                              |
-| `LOG_LEVEL`                       | `server.log` level; `DEBUG` also logs full request payloads (prompts, files)      | `INFO`                                            |
-| `PROVIDER_RATE_LIMIT`             | LLM API requests per window, per provider                                          | `40`                                              |
-| `PROVIDER_RATE_WINDOW`            | Rate limit window (seconds)                                                        | `60`                                              |
-| `PROVIDER_MAX_CONCURRENCY`        | Max simultaneous open streams, per provider                                        | `5`                                               |
-| `HTTP_READ_TIMEOUT`               | Read timeout for provider API requests (seconds)                                   | `120`                                             |
-| `HTTP_WRITE_TIMEOUT`              | Write timeout for provider API requests (seconds)                                  | `10`                                              |
-| `HTTP_CONNECT_TIMEOUT`            | Connect timeout for provider API requests (seconds)                                | `2`                                               |
-| `FAST_PREFIX_DETECTION`           | Enable fast prefix detection                                                       | `true`                                            |
-| `ENABLE_NETWORK_PROBE_MOCK`       | Enable network probe mock                                                          | `true`                                            |
-| `ENABLE_TITLE_GENERATION_SKIP`    | Skip title generation                                                              | `true`                                            |
-| `ENABLE_SUGGESTION_MODE_SKIP`     | Skip suggestion mode                                                               | `true`                                            |
-| `ENABLE_FILEPATH_EXTRACTION_MOCK` | Enable filepath extraction mock                                                    | `true`                                            |
-| `MESSAGING_PLATFORM`              | Messaging platform: `discord` or `telegram`                                        | `discord`                                         |
-| `DISCORD_BOT_TOKEN`               | Discord Bot Token                                                                  | `""`                                              |
-| `ALLOWED_DISCORD_CHANNELS`        | Comma-separated channel IDs (empty = none allowed)                                 | `""`                                              |
-| `TELEGRAM_BOT_TOKEN`              | Telegram Bot Token                                                                 | `""`                                              |
-| `ALLOWED_TELEGRAM_USER_ID`        | Allowed Telegram User ID (empty = nobody allowed)                                  | `""`                                              |
-| `VOICE_NOTE_ENABLED`              | Enable voice note handling                                                         | `true`                                            |
-| `WHISPER_MODEL`                   | Local Whisper model size                                                           | `base`                                            |
-| `WHISPER_DEVICE`                  | `cpu` \| `cuda`                                                                    | `cpu`                                             |
-| `MESSAGING_RATE_LIMIT`            | Messaging messages per window                                                      | `1`                                               |
-| `MESSAGING_RATE_WINDOW`           | Messaging window (seconds)                                                         | `1`                                               |
-| `CLAUDE_WORKSPACE`                | Directory for agent workspace                                                      | `./agent_workspace`                               |
-| `ALLOWED_DIR`                     | Allowed directories for agent                                                      | `""`                                              |
+| Variable                          | Description                                                                                     | Default                                           |
+| --------------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `MODEL`                           | Default model (`provider/model/name`); comma-separate a chain to fall back on errors            | `nvidia_nim/stepfun-ai/step-3.5-flash`            |
+| `MODEL_OPUS`                      | Model for Claude Opus requests (optional, falls back to `MODEL`)                                | `nvidia_nim/z-ai/glm4.7`                          |
+| `MODEL_SONNET`                    | Model for Claude Sonnet requests (optional, falls back to `MODEL`)                              | `open_router/arcee-ai/trinity-large-preview:free` |
+| `MODEL_HAIKU`                     | Model for Claude Haiku requests (optional, falls back to `MODEL`)                               | `open_router/stepfun/step-3.5-flash:free`         |
+| `NVIDIA_NIM_API_KEY`              | NVIDIA API key (NIM provider)                                                                   | required                                          |
+| `OPENROUTER_API_KEY`              | OpenRouter API key (OpenRouter provider)                                                        | required                                          |
+| `LM_STUDIO_BASE_URL`              | LM Studio server URL                                                                            | `http://localhost:1234/v1`                        |
+| `HOST`                            | Interface the proxy listens on (`python server.py`); use `0.0.0.0` only with `PROXY_AUTH_TOKEN` | `127.0.0.1`                                       |
+| `PROXY_AUTH_TOKEN`                | Token clients must send as `ANTHROPIC_AUTH_TOKEN` (empty = no check)                            | `""`                                              |
+| `LOG_LEVEL`                       | `server.log` level; `DEBUG` also logs full request payloads (prompts, files)                    | `INFO`                                            |
+| `PROVIDER_RATE_LIMIT`             | LLM API requests per window, per provider                                                       | `40`                                              |
+| `PROVIDER_RATE_WINDOW`            | Rate limit window (seconds)                                                                     | `60`                                              |
+| `PROVIDER_MAX_CONCURRENCY`        | Max simultaneous open streams, per provider                                                     | `5`                                               |
+| `HTTP_READ_TIMEOUT`               | Read timeout for provider API requests (seconds)                                                | `120`                                             |
+| `HTTP_WRITE_TIMEOUT`              | Write timeout for provider API requests (seconds)                                               | `10`                                              |
+| `HTTP_CONNECT_TIMEOUT`            | Connect timeout for provider API requests (seconds)                                             | `2`                                               |
+| `FAST_PREFIX_DETECTION`           | Enable fast prefix detection                                                                    | `true`                                            |
+| `ENABLE_NETWORK_PROBE_MOCK`       | Enable network probe mock                                                                       | `true`                                            |
+| `ENABLE_TITLE_GENERATION_SKIP`    | Skip title generation                                                                           | `true`                                            |
+| `ENABLE_SUGGESTION_MODE_SKIP`     | Skip suggestion mode                                                                            | `true`                                            |
+| `ENABLE_FILEPATH_EXTRACTION_MOCK` | Enable filepath extraction mock                                                                 | `true`                                            |
+| `MESSAGING_PLATFORM`              | Messaging platform: `discord` or `telegram`                                                     | `discord`                                         |
+| `DISCORD_BOT_TOKEN`               | Discord Bot Token                                                                               | `""`                                              |
+| `ALLOWED_DISCORD_CHANNELS`        | Comma-separated channel IDs (empty = none allowed)                                              | `""`                                              |
+| `TELEGRAM_BOT_TOKEN`              | Telegram Bot Token                                                                              | `""`                                              |
+| `ALLOWED_TELEGRAM_USER_ID`        | Allowed Telegram User ID (empty = nobody allowed)                                               | `""`                                              |
+| `VOICE_NOTE_ENABLED`              | Enable voice note handling                                                                      | `true`                                            |
+| `WHISPER_MODEL`                   | Local Whisper model size                                                                        | `base`                                            |
+| `WHISPER_DEVICE`                  | `cpu` \                                                                                         | `cuda`                                            |
+| `MESSAGING_RATE_LIMIT`            | Messaging messages per window                                                                   | `1`                                               |
+| `MESSAGING_RATE_WINDOW`           | Messaging window (seconds)                                                                      | `1`                                               |
+| `CLAUDE_WORKSPACE`                | Directory for agent workspace                                                                   | `./agent_workspace`                               |
+| `ALLOWED_DIR`                     | Allowed directories for agent                                                                   | `""`                                              |
 
 See [`.env.example`](.env.example) for all supported parameters.
 

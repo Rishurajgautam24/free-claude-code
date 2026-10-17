@@ -11,6 +11,7 @@
 - Read `.env.example` for environment variables.
 - All CI checks must pass; failing checks block merge.
 - Add tests for new changes (including edge cases), then run `uv run pytest`.
+- Update `README.md` (features, usage, configuration table) and `.env.example` in the same change whenever behaviour or settings change.
 - Run checks in this order: `uv run ruff format`, `uv run ruff check`, `uv run ty check`, `uv run pytest`.
 - Do not add `# type: ignore` or `# ty: ignore`; fix the underlying type issue.
 - All 5 checks are enforced in `tests.yml` on push/merge.
