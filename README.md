@@ -568,6 +568,7 @@ Browse: [model.lmstudio.ai](https://model.lmstudio.ai)
 | `WHISPER_DEVICE`                    | `cpu` \                                                                                         | `cuda`                                            |
 | `MESSAGING_RATE_LIMIT`              | Messaging messages per window                                                                   | `1`                                               |
 | `MESSAGING_RATE_WINDOW`             | Messaging window (seconds)                                                                      | `1`                                               |
+| `MAX_CONCURRENT_CLI`                | Claude Code processes the bot runs at once; more tasks wait                                     | `4`                                               |
 | `CLAUDE_WORKSPACE`                  | Directory for agent workspace                                                                   | `./agent_workspace`                               |
 | `ALLOWED_DIR`                       | Allowed directories for agent                                                                   | `""`                                              |
 
