@@ -323,6 +323,125 @@ class TestStreamingExceptionHandling:
         assert not other._rate_limiter.is_blocked()
 
 
+def _tool_delta(index=0, id=None, name=None, arguments=None, function=True):
+    tc = MagicMock()
+    tc.index, tc.id = index, id
+    if function:
+        tc.function.name, tc.function.arguments = name, arguments
+    else:
+        tc.function = None
+    return tc
+
+
+async def _stream_chunks(chunks):
+    provider = _make_provider()
+    with (
+        patch.object(
+            provider._client.chat.completions,
+            "create",
+            new_callable=AsyncMock,
+            return_value=AsyncStreamMock(chunks),
+        ),
+        patch.object(
+            provider._rate_limiter,
+            "wait_if_blocked",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
+    ):
+        return "".join(await _collect_stream(provider, _make_request()))
+
+
+def _stop_reason(text):
+    return json.loads(text.split("event: message_delta\ndata: ")[1].split("\n")[0])[
+        "delta"
+    ]["stop_reason"]
+
+
+class TestToolCallStream:
+    """Tool calls must survive provider quirks and end with stop_reason tool_use."""
+
+    @pytest.mark.asyncio
+    async def test_id_only_tool_delta_does_not_crash(self):
+        text = await _stream_chunks(
+            [
+                _make_chunk(tool_calls=[_tool_delta(id="call_1", function=False)]),
+                _make_chunk(
+                    tool_calls=[
+                        _tool_delta(name="Read", arguments='{"file_path": "a"}')
+                    ]
+                ),
+                _make_chunk(finish_reason="tool_calls"),
+            ]
+        )
+        assert "Provider request failed" not in text
+        assert '"id": "call_1", "name": "Read"' in text
+        assert '"file_path' in text
+        assert _stop_reason(text) == "tool_use"
+
+    @pytest.mark.asyncio
+    async def test_name_streamed_in_fragments(self):
+        text = await _stream_chunks(
+            [
+                _make_chunk(tool_calls=[_tool_delta(id="c", name="Re")]),
+                _make_chunk(tool_calls=[_tool_delta(name="ad", arguments="{}")]),
+            ]
+        )
+        assert '"name": "Read"' in text
+        assert text.count('"type": "tool_use"') == 1
+
+    @pytest.mark.asyncio
+    async def test_tool_without_arguments_still_emitted(self):
+        text = await _stream_chunks(
+            [
+                _make_chunk(tool_calls=[_tool_delta(id="c", name="TodoRead")]),
+                _make_chunk(finish_reason="tool_calls"),
+            ]
+        )
+        assert '"name": "TodoRead"' in text
+        assert _stop_reason(text) == "tool_use"
+
+    @pytest.mark.asyncio
+    async def test_finish_reason_read_from_chunk_without_delta(self):
+        last = _make_chunk(finish_reason="length")
+        last.choices[0].delta = None
+        text = await _stream_chunks([_make_chunk(content="Hi"), last])
+        assert _stop_reason(text) == "max_tokens"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "chunks",
+        [
+            # native tool call, but the provider says "stop"
+            [
+                _make_chunk(
+                    tool_calls=[_tool_delta(id="c", name="Read", arguments="{}")]
+                ),
+                _make_chunk(finish_reason="stop"),
+            ],
+            # tool call written as text and parsed heuristically
+            [
+                _make_chunk(
+                    content="● <function=Read><parameter=file_path>a</parameter></function>"
+                ),
+                _make_chunk(finish_reason="stop"),
+            ],
+        ],
+        ids=["native_with_stop", "text_parsed"],
+    )
+    async def test_tool_calls_end_with_tool_use(self, chunks):
+        text = await _stream_chunks(chunks)
+        assert '"type": "tool_use"' in text
+        assert _stop_reason(text) == "tool_use"
+
+    @pytest.mark.asyncio
+    async def test_plain_text_still_ends_with_end_turn(self):
+        text = await _stream_chunks(
+            [_make_chunk(content="Hi"), _make_chunk(finish_reason="stop")]
+        )
+        assert _stop_reason(text) == "end_turn"
+
+
 class TestRaiseBeforeOutput:
     """raise_before_output lets the route fall back to another model."""
 
