@@ -533,30 +533,15 @@ class ClaudeMessageHandler:
                     logger.warning(f"Failed to update platform for node {node_id}: {e}")
 
         try:
-            try:
-                (
-                    cli_session,
-                    session_or_temp_id,
-                    is_new,
-                ) = await self.cli_manager.get_or_create_session(session_id=None)
-                if is_new:
-                    temp_session_id = session_or_temp_id
-                else:
-                    captured_session_id = session_or_temp_id
-            except RuntimeError as e:
-                error_message = get_user_facing_error_message(e)
-                transcript.apply({"type": "error", "message": error_message})
-                await update_ui(
-                    self.format_status("⏳", "Session limit reached"),
-                    force=True,
-                )
-                if tree:
-                    await tree.update_state(
-                        node_id,
-                        MessageState.ERROR,
-                        error_message=error_message,
-                    )
-                return
+            (
+                cli_session,
+                session_or_temp_id,
+                is_new,
+            ) = await self.cli_manager.get_or_create_session(session_id=None)
+            if is_new:
+                temp_session_id = session_or_temp_id
+            else:
+                captured_session_id = session_or_temp_id
 
             logger.info(f"HANDLER: Starting CLI task processing for node {node_id}")
             event_count = 0

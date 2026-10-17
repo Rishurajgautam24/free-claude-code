@@ -378,7 +378,7 @@ Control Claude Code remotely from Discord. Send tasks, watch live progress, and 
 - Tree-based message threading: reply to a message to fork the conversation
 - Session persistence across server restarts, crash-safe: `sessions.json` (in `CLAUDE_WORKSPACE`) is written atomically, and an unreadable file is kept as `sessions.json.corrupt-<time>` instead of being overwritten
 - Live streaming of thinking tokens, tool calls, and results
-- Unlimited concurrent Claude CLI sessions (provider concurrency controlled by `PROVIDER_MAX_CONCURRENCY`)
+- Many conversations in parallel; at most `MAX_CONCURRENT_CLI` Claude Code processes run at once (default 4), further tasks wait for a free slot
 - **Voice notes**: send voice messages; they are transcribed and processed like regular prompts (see [Voice Notes](#voice-notes))
 - Commands: `/stop` (cancel tasks; reply to a message to stop only that task), `/clear` (standalone: reset all sessions; reply to a message to clear that branch downwards), `/stats`
 

@@ -29,6 +29,7 @@ class CLISessionManager:
         allowed_dirs: list[str] | None = None,
         plans_directory: str | None = None,
         auth_token: str = "",
+        max_concurrent: int = 4,
     ):
         """
         Initialize the session manager.
@@ -44,6 +45,8 @@ class CLISessionManager:
         self.allowed_dirs = allowed_dirs or []
         self.plans_directory = plans_directory
         self.auth_token = auth_token
+        # Extra tasks wait for a free slot instead of starting another process.
+        self._process_slots = asyncio.Semaphore(max_concurrent)
 
         self._sessions: dict[str, CLISession] = {}
         self._pending_sessions: dict[str, CLISession] = {}
@@ -78,6 +81,7 @@ class CLISessionManager:
                 allowed_dirs=self.allowed_dirs,
                 plans_directory=self.plans_directory,
                 auth_token=self.auth_token,
+                process_slots=self._process_slots,
             )
             self._pending_sessions[temp_id] = new_session
             logger.info(f"Created new session: {temp_id}")

@@ -143,6 +143,10 @@ class Settings(BaseSettings):
         default=None, validation_alias="ALLOWED_DISCORD_CHANNELS"
     )
     claude_workspace: str = "./agent_workspace"
+    # Claude Code processes the bot runs at once; more tasks wait for a free slot
+    max_concurrent_cli: int = Field(
+        default=4, ge=1, validation_alias="MAX_CONCURRENT_CLI"
+    )
     allowed_dir: str = ""
 
     # ==================== Server ====================
