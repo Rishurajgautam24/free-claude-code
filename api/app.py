@@ -90,6 +90,7 @@ async def lifespan(app: FastAPI):
                 allowed_dirs=allowed_dirs,
                 plans_directory=plans_directory,
                 auth_token=settings.proxy_auth_token,
+                max_concurrent=settings.max_concurrent_cli,
             )
 
             # Initialize session store

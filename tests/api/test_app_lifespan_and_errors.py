@@ -28,6 +28,7 @@ def test_create_app_provider_error_handler_returns_anthropic_format():
         host="127.0.0.1",
         port=8082,
         proxy_auth_token="",
+        max_concurrent_cli=4,
         log_file="server.log",
     )
     with (
@@ -63,6 +64,7 @@ def test_create_app_general_exception_handler_returns_500():
         host="127.0.0.1",
         port=8082,
         proxy_auth_token="",
+        max_concurrent_cli=4,
         log_file="server.log",
     )
     with (
@@ -96,6 +98,7 @@ def test_app_lifespan_sets_state_and_cleans_up(tmp_path, messaging_enabled):
         host="127.0.0.1",
         port=8082,
         proxy_auth_token="",
+        max_concurrent_cli=4,
         log_file=str(tmp_path / "server.log"),
     )
 
@@ -176,6 +179,7 @@ def test_app_lifespan_cleanup_continues_if_platform_stop_raises(tmp_path):
         host="127.0.0.1",
         port=8082,
         proxy_auth_token="",
+        max_concurrent_cli=4,
         log_file=str(tmp_path / "server.log"),
     )
 
@@ -230,6 +234,7 @@ def test_app_lifespan_messaging_import_error_no_crash(tmp_path, caplog):
         host="127.0.0.1",
         port=8082,
         proxy_auth_token="",
+        max_concurrent_cli=4,
         log_file=str(tmp_path / "server.log"),
     )
 
@@ -267,6 +272,7 @@ def test_app_lifespan_platform_start_exception_cleanup_still_runs(tmp_path):
         host="127.0.0.1",
         port=8082,
         proxy_auth_token="",
+        max_concurrent_cli=4,
         log_file=str(tmp_path / "server.log"),
     )
 
@@ -319,6 +325,7 @@ def test_app_lifespan_flush_pending_save_exception_warning_only(tmp_path):
         host="127.0.0.1",
         port=8082,
         proxy_auth_token="",
+        max_concurrent_cli=4,
         log_file=str(tmp_path / "server.log"),
     )
 

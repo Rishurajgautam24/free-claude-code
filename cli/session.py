@@ -1,6 +1,7 @@
 """Claude Code CLI session management."""
 
 import asyncio
+import contextlib
 import json
 import os
 from collections.abc import AsyncGenerator
@@ -21,8 +22,11 @@ class CLISession:
         allowed_dirs: list[str] | None = None,
         plans_directory: str | None = None,
         auth_token: str = "",
+        process_slots: asyncio.Semaphore | None = None,
     ):
         self.workspace = os.path.normpath(os.path.abspath(workspace_path))
+        # Shared across sessions: caps how many CLI processes run at once.
+        self._process_slots = process_slots or contextlib.nullcontext()
         self.auth_token = auth_token
         self.api_url = api_url
         self.allowed_dirs = [os.path.normpath(d) for d in (allowed_dirs or [])]
@@ -50,7 +54,7 @@ class CLISession:
         Yields:
             Event dictionaries from the CLI
         """
-        async with self._cli_lock:
+        async with self._cli_lock, self._process_slots:
             self._is_busy = True
             env = os.environ.copy()
 
