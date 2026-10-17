@@ -21,7 +21,8 @@ from providers.common import (
     map_error,
     map_stop_reason,
 )
-from providers.rate_limit import GlobalRateLimiter
+from providers.exceptions import RateLimitError
+from providers.rate_limit import ProviderRateLimiter
 
 
 class OpenAICompatibleProvider(BaseProvider):
@@ -41,7 +42,7 @@ class OpenAICompatibleProvider(BaseProvider):
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
         self._nim_settings = nim_settings
-        self._global_rate_limiter = GlobalRateLimiter.get_instance(
+        self._rate_limiter = ProviderRateLimiter(
             rate_limit=config.rate_limit,
             rate_window=config.rate_window,
             max_concurrency=config.max_concurrency,
@@ -159,9 +160,9 @@ class OpenAICompatibleProvider(BaseProvider):
         error_occurred = False
         error_message = ""
 
-        async with self._global_rate_limiter.concurrency_slot():
+        async with self._rate_limiter.concurrency_slot():
             try:
-                stream = await self._global_rate_limiter.execute_with_retry(
+                stream = await self._rate_limiter.execute_with_retry(
                     self._client.chat.completions.create, **body, stream=True
                 )
                 async for chunk in stream:
@@ -249,6 +250,8 @@ class OpenAICompatibleProvider(BaseProvider):
             except Exception as e:
                 logger.error("{}_ERROR:{} {}: {}", tag, req_tag, type(e).__name__, e)
                 mapped_e = map_error(e)
+                if isinstance(mapped_e, RateLimitError):
+                    self._rate_limiter.set_blocked(60)  # cool down this provider only
                 error_occurred = True
                 error_message = append_request_id(
                     get_user_facing_error_message(

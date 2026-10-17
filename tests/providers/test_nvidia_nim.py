@@ -39,9 +39,9 @@ class MockRequest:
 
 @pytest.fixture(autouse=True)
 def mock_rate_limiter():
-    """Mock the global rate limiter to prevent waiting."""
-    with patch("providers.openai_compat.GlobalRateLimiter") as mock:
-        instance = mock.get_instance.return_value
+    """Mock the provider rate limiter to prevent waiting."""
+    with patch("providers.openai_compat.ProviderRateLimiter") as mock:
+        instance = mock.return_value
         instance.wait_if_blocked = AsyncMock(return_value=False)
 
         # execute_with_retry should call through to the actual function

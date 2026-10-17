@@ -16,7 +16,7 @@ class ProviderConfig(BaseModel):
 
     api_key: str
     base_url: str | None = None
-    rate_limit: int | None = None
+    rate_limit: int = 40
     rate_window: int = 60
     max_concurrency: int = 5
     http_read_timeout: float = 300.0

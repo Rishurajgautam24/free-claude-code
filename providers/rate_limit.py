@@ -1,4 +1,4 @@
-"""Global rate limiter for API requests."""
+"""Per-provider rate limiter for API requests."""
 
 import asyncio
 import random
@@ -6,7 +6,7 @@ import time
 from collections import deque
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
-from typing import Any, ClassVar, TypeVar
+from typing import Any, TypeVar
 
 import openai
 from loguru import logger
@@ -14,27 +14,18 @@ from loguru import logger
 T = TypeVar("T")
 
 
-class GlobalRateLimiter:
+class ProviderRateLimiter:
     """
-    Global singleton rate limiter that blocks all requests
-    when a rate limit error is encountered (reactive) and
-    throttles requests (proactive) using a strict rolling window.
+    Rate limiter for one provider: blocks its requests when a rate limit
+    error is encountered (reactive) and throttles requests (proactive)
+    using a strict rolling window.
 
     Optionally enforces a max_concurrency cap: at most N provider streams
     may be open simultaneously, independent of the sliding window.
 
-    Proactive limits - throttles requests to stay within API limits.
-    Reactive limits - pauses all requests when a 429 is hit.
-    Concurrency limit - caps simultaneously open streams.
+    Each provider owns its instance, so one provider's quota or 429 does
+    not slow down another.
     """
-
-    _instance: ClassVar[GlobalRateLimiter | None] = None
-
-    def __new__(cls, *args: Any, **kwargs: Any) -> GlobalRateLimiter:
-        if cls._instance is not None:
-            return cls._instance
-        instance = super().__new__(cls)
-        return instance
 
     def __init__(
         self,
@@ -42,10 +33,6 @@ class GlobalRateLimiter:
         rate_window: float = 60.0,
         max_concurrency: int = 5,
     ):
-        # Prevent re-initialization on singleton reuse
-        if hasattr(self, "_initialized"):
-            return
-
         if rate_limit <= 0:
             raise ValueError("rate_limit must be > 0")
         if rate_window <= 0:
@@ -60,38 +47,10 @@ class GlobalRateLimiter:
         self._blocked_until: float = 0
         self._lock = asyncio.Lock()
         self._concurrency_sem = asyncio.Semaphore(max_concurrency)
-        self._initialized = True
 
         logger.info(
-            f"GlobalRateLimiter (Provider) initialized ({rate_limit} req / {rate_window}s, max_concurrency={max_concurrency})"
+            f"ProviderRateLimiter initialized ({rate_limit} req / {rate_window}s, max_concurrency={max_concurrency})"
         )
-
-    @classmethod
-    def get_instance(
-        cls,
-        rate_limit: int | None = None,
-        rate_window: float | None = None,
-        max_concurrency: int = 5,
-    ) -> GlobalRateLimiter:
-        """Get or create the singleton instance.
-
-        Args:
-            rate_limit: Requests per window (only used on first creation)
-            rate_window: Window in seconds (only used on first creation)
-            max_concurrency: Max simultaneous open streams (only used on first creation)
-        """
-        if cls._instance is None:
-            cls._instance = cls(
-                rate_limit=rate_limit or 40,
-                rate_window=rate_window or 60.0,
-                max_concurrency=max_concurrency,
-            )
-        return cls._instance
-
-    @classmethod
-    def reset_instance(cls) -> None:
-        """Reset singleton (for testing)."""
-        cls._instance = None
 
     async def wait_if_blocked(self) -> bool:
         """
@@ -106,7 +65,7 @@ class GlobalRateLimiter:
         if now < self._blocked_until:
             wait_time = self._blocked_until - now
             logger.warning(
-                f"Global provider rate limit active (reactive), waiting {wait_time:.1f}s..."
+                f"Provider rate limit active (reactive), waiting {wait_time:.1f}s..."
             )
             await asyncio.sleep(wait_time)
             waited_reactively = True
@@ -146,13 +105,13 @@ class GlobalRateLimiter:
 
     def set_blocked(self, seconds: float = 60) -> None:
         """
-        Set global block for specified seconds (reactive).
+        Block this provider's requests for specified seconds (reactive).
 
         Args:
             seconds: How long to block (default 60s)
         """
         self._blocked_until = time.monotonic() + seconds
-        logger.warning(f"Global provider rate limit set for {seconds:.1f}s (reactive)")
+        logger.warning(f"Provider rate limit set for {seconds:.1f}s (reactive)")
 
     def is_blocked(self) -> bool:
         """Check if currently reactively blocked."""
