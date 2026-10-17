@@ -64,6 +64,10 @@ class OpenAICompatibleProvider(BaseProvider):
             ),
         )
 
+    async def list_models(self) -> list[str]:
+        """Model IDs from the provider's OpenAI-compatible /models endpoint."""
+        return sorted([model.id async for model in self._client.models.list()])
+
     async def cleanup(self) -> None:
         """Release HTTP client resources."""
         client = getattr(self, "_client", None)

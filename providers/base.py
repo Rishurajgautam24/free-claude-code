@@ -34,6 +34,10 @@ class BaseProvider(ABC):
     async def cleanup(self) -> None:
         """Release any resources held by this provider."""
 
+    async def list_models(self) -> list[str]:
+        """Model IDs this provider offers (used by claude-pick)."""
+        raise NotImplementedError
+
     @abstractmethod
     async def stream_response(
         self,

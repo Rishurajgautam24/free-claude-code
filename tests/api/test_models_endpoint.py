@@ -79,3 +79,31 @@ def test_messages_with_picked_model_use_its_provider():
         b"".join(response.iter_bytes())
     get.assert_called_once_with("open_router")
     assert seen == ["step:free"]
+
+
+def _catalog(provider_or_error):
+    provider = MagicMock(spec=NvidiaNimProvider)
+    if isinstance(provider_or_error, Exception):
+        provider.list_models.side_effect = provider_or_error
+    else:
+        provider.list_models.return_value = provider_or_error
+    return patch("api.routes.get_provider_for_type", return_value=provider)
+
+
+def test_catalog_lists_every_model_of_a_provider():
+    with _catalog(["llama-3.3-70b", "gpt-oss-120b"]):
+        body = _client().get("/v1/models?catalog=groq").json()
+    assert [m["id"] for m in body["data"]] == [
+        "claude-fcc/groq/llama-3.3-70b",
+        "claude-fcc/groq/gpt-oss-120b",
+    ]
+    assert body["data"][0]["display_name"] == "groq/llama-3.3-70b"
+
+
+def test_catalog_errors_are_clear():
+    client = _client()
+    assert client.get("/v1/models?catalog=bogus").status_code == 400
+    with _catalog(RuntimeError("connection refused")):
+        response = client.get("/v1/models?catalog=lmstudio")
+    assert response.status_code == 502
+    assert "Could not list lmstudio models" in response.json()["detail"]

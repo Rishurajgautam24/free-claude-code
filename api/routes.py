@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from loguru import logger
 from starlette.types import Message, Send
 
-from config.settings import MODEL_ID_PREFIX, Settings
+from config.settings import MODEL_ID_PREFIX, VALID_PROVIDERS, Settings
 from providers.common import get_user_facing_error_message
 from providers.exceptions import APIError, InvalidRequestError, ProviderError
 from providers.logging_utils import build_request_summary, log_request_compact
@@ -254,17 +254,38 @@ async def root(settings: Settings = Depends(get_settings)):
 
 
 @router.get("/v1/models", dependencies=[Depends(require_auth)])
-async def list_models(settings: Settings = Depends(get_settings)):
-    """Configured models, for Claude Code's /model picker (gateway model discovery)."""
+async def list_models(
+    catalog: str | None = None, settings: Settings = Depends(get_settings)
+):
+    """Configured models, for Claude Code's /model picker (gateway model discovery).
+
+    With ?catalog=<provider>, every model that provider offers (used by claude-pick).
+    """
+    if catalog is None:
+        models = {
+            m: ", ".join(uses) for m, uses in settings.configured_models().items()
+        }
+    else:
+        if catalog not in VALID_PROVIDERS:
+            raise HTTPException(400, f"Unknown provider {catalog!r}")
+        provider = get_provider_for_type(catalog)  # 503 if its key is missing
+        try:
+            ids = await provider.list_models()
+        except Exception as e:
+            raise HTTPException(
+                502,
+                f"Could not list {catalog} models: {get_user_facing_error_message(e)}",
+            ) from e
+        models = {f"{catalog}/{model_id}": catalog for model_id in ids}
     data = [
         {
             "type": "model",
             "id": f"{MODEL_ID_PREFIX}{model}",
             "display_name": model,
-            "description": ", ".join(uses),
+            "description": description,
             "created_at": "1970-01-01T00:00:00Z",
         }
-        for model, uses in settings.configured_models().items()
+        for model, description in models.items()
     ]
     return {
         "data": data,
