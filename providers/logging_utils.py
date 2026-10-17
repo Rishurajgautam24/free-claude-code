@@ -8,8 +8,6 @@ import hashlib
 import json
 from typing import Any
 
-from loguru import logger
-
 from providers.common.text import extract_text_from_content
 
 
@@ -99,13 +97,14 @@ def build_request_summary(request_data: Any) -> dict[str, Any]:
     }
 
 
-def log_full_payload(
-    logger_instance: Any, request_id: str, payload: dict[str, Any]
-) -> None:
-    """Log full payload to the standard logger."""
-    logger_instance.debug(
-        f"FULL_PAYLOAD [{request_id}]: {json.dumps(payload, default=str)}"
-    )
+def _dump_payload(request_data: Any) -> str:
+    try:
+        payload = (
+            request_data.model_dump() if hasattr(request_data, "model_dump") else {}
+        )
+        return json.dumps(payload, default=str)
+    except Exception as e:
+        return f"<could not dump request data: {e}>"
 
 
 def log_request_compact(
@@ -117,18 +116,14 @@ def log_request_compact(
     """Log a compact request summary with fingerprint for correlation.
 
     This is the main entry point for logging requests. It logs a single-line
-    JSON summary to the main log and always writes full payload.
+    JSON summary to the main log, plus the full payload at DEBUG level.
     """
     summary = build_request_summary(request_data)
     summary["request_id"] = request_id
 
     logger_instance.info(f"{prefix}: {json.dumps(summary)}")
 
-    # Always log full payload
-    try:
-        payload = (
-            request_data.model_dump() if hasattr(request_data, "model_dump") else {}
-        )
-        log_full_payload(logger_instance, request_id, payload)
-    except Exception as e:
-        logger.debug(f"Could not dump request data: {e}")
+    # Lazy: the full payload is only serialized when DEBUG logging is on.
+    logger_instance.opt(lazy=True).debug(
+        f"FULL_PAYLOAD [{request_id}]: {{}}", lambda: _dump_payload(request_data)
+    )
