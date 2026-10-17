@@ -183,6 +183,21 @@ ANTHROPIC_AUTH_TOKEN="freecc" ANTHROPIC_BASE_URL="http://localhost:8082" claude
 
 That's it! Claude Code now uses your configured provider for free.
 
+**Something not working?** Run the doctor. It checks your `.env`, that every configured model's provider has a key, is reachable and really offers that model, that Claude Code is installed, that the proxy is running, and common security mistakes:
+
+```bash
+uv run python doctor.py
+```
+
+```
+ ✓ .env found
+ ✓ nvidia_nim/z-ai/glm4.7 is available
+ ✗ groq: GROQ_API_KEY is not set. Add it to your .env file. Get a key at https://console.groq.com/keys
+ ✓ Claude Code 2.1.292 (Claude Code)
+ ✓ proxy is running on port 8082
+ ✓ no security issues found
+```
+
 <details>
 <summary><b>Remote access & security</b> (WSL, Docker, another machine)</summary>
 
