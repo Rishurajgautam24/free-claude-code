@@ -123,6 +123,13 @@ class CLISession:
 
                 session_id_extracted = False
                 buffer = bytearray()
+                # Drain stderr while reading stdout: a full stderr pipe would block
+                # the CLI and it would never close stdout (deadlock).
+                stderr_task = (
+                    asyncio.create_task(self.process.stderr.read())
+                    if self.process.stderr
+                    else None
+                )
 
                 try:
                     while True:
@@ -165,11 +172,13 @@ class CLISession:
                     try:
                         await asyncio.shield(self.stop())
                     finally:
+                        if stderr_task:
+                            stderr_task.cancel()
                         raise
 
                 stderr_text = None
-                if self.process.stderr:
-                    stderr_output = await self.process.stderr.read()
+                if stderr_task:
+                    stderr_output = await stderr_task
                     if stderr_output:
                         stderr_text = stderr_output.decode(
                             "utf-8", errors="replace"
