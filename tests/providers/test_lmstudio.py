@@ -622,16 +622,45 @@ def test_build_request_body_stop_sequences(lmstudio_provider):
     assert body["stop"] == ["STOP", "END"]
 
 
-def test_build_request_body_tools_and_tool_choice(lmstudio_provider):
-    """tools and tool_choice non-empty add to body."""
+@pytest.mark.parametrize(
+    ("anthropic_choice", "openai_choice"),
+    [
+        ({"type": "auto"}, "auto"),
+        ({"type": "any"}, "required"),
+        ({"type": "none"}, "none"),
+        (
+            {"type": "tool", "name": "test_tool"},
+            {"type": "function", "function": {"name": "test_tool"}},
+        ),
+    ],
+)
+def test_build_request_body_tools_and_tool_choice(
+    lmstudio_provider, anthropic_choice, openai_choice
+):
+    """Anthropic tool_choice is mapped to the OpenAI format."""
     tool = MagicMock()
     tool.name = "test_tool"
     tool.description = "A test"
     tool.input_schema = {"type": "object"}
-    req = MockRequest(tools=[tool], tool_choice="auto")
+    req = MockRequest(tools=[tool], tool_choice=anthropic_choice)
     body = lmstudio_provider._build_request_body(req)
     assert "tools" in body
-    assert body["tool_choice"] == "auto"
+    assert body["tool_choice"] == openai_choice
+
+
+@pytest.mark.parametrize(
+    ("tools", "tool_choice"), [([], {"type": "any"}), ([MagicMock()], {"type": "x"})]
+)
+def test_build_request_body_skips_unusable_tool_choice(
+    lmstudio_provider, tools, tool_choice
+):
+    """No tools, or an unknown choice type, leaves tool_choice out."""
+    for tool in tools:
+        tool.name, tool.description, tool.input_schema = "t", "d", {"type": "object"}
+    body = lmstudio_provider._build_request_body(
+        MockRequest(tools=tools, tool_choice=tool_choice)
+    )
+    assert "tool_choice" not in body
 
 
 # --- Base URL Trailing Slash ---
