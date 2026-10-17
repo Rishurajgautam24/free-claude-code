@@ -739,3 +739,11 @@ class TestStreamChunkEdgeCases:
         event_text = "".join(events1 + events2 + flushed)
         assert "tool_use" in event_text
         assert "{}" in event_text
+
+
+@pytest.mark.asyncio
+async def test_cleanup_closes_the_real_client():
+    """cleanup() must call a method AsyncOpenAI really has (it once called aclose)."""
+    provider = _make_provider()
+    await provider.cleanup()
+    assert provider._client.is_closed()
