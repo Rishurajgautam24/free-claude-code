@@ -4,6 +4,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
+import openai
 import pytest
 
 from config.nim import NimSettings
@@ -103,7 +104,7 @@ class TestStreamingExceptionHandling:
                 side_effect=RuntimeError("API failed"),
             ),
             patch.object(
-                provider._global_rate_limiter,
+                provider._rate_limiter,
                 "wait_if_blocked",
                 new_callable=AsyncMock,
                 return_value=False,
@@ -131,7 +132,7 @@ class TestStreamingExceptionHandling:
                 side_effect=httpx.ReadTimeout(""),
             ),
             patch.object(
-                provider._global_rate_limiter,
+                provider._rate_limiter,
                 "wait_if_blocked",
                 new_callable=AsyncMock,
                 return_value=False,
@@ -167,7 +168,7 @@ class TestStreamingExceptionHandling:
                 return_value=stream_mock,
             ),
             patch.object(
-                provider._global_rate_limiter,
+                provider._rate_limiter,
                 "wait_if_blocked",
                 new_callable=AsyncMock,
                 return_value=False,
@@ -197,7 +198,7 @@ class TestStreamingExceptionHandling:
                 return_value=stream_mock,
             ),
             patch.object(
-                provider._global_rate_limiter,
+                provider._rate_limiter,
                 "wait_if_blocked",
                 new_callable=AsyncMock,
                 return_value=False,
@@ -227,7 +228,7 @@ class TestStreamingExceptionHandling:
                 return_value=stream_mock,
             ),
             patch.object(
-                provider._global_rate_limiter,
+                provider._rate_limiter,
                 "wait_if_blocked",
                 new_callable=AsyncMock,
                 return_value=False,
@@ -259,7 +260,7 @@ class TestStreamingExceptionHandling:
                 return_value=stream_mock,
             ),
             patch.object(
-                provider._global_rate_limiter,
+                provider._rate_limiter,
                 "wait_if_blocked",
                 new_callable=AsyncMock,
                 return_value=False,
@@ -293,7 +294,7 @@ class TestStreamingExceptionHandling:
                 return await fn(*args, **kwargs)
 
             with patch.object(
-                provider._global_rate_limiter,
+                provider._rate_limiter,
                 "execute_with_retry",
                 new_callable=AsyncMock,
                 side_effect=_passthrough,
@@ -302,6 +303,24 @@ class TestStreamingExceptionHandling:
 
         event_text = "".join(events)
         assert "Response" in event_text
+
+    @pytest.mark.asyncio
+    async def test_429_blocks_only_this_provider(self):
+        """A 429 that exhausts retries cools down this provider, not others."""
+        provider, other = _make_provider(), _make_provider()
+        response = httpx.Response(429, request=httpx.Request("POST", "http://x"))
+        error = openai.RateLimitError("rate limited", response=response, body=None)
+
+        with patch.object(
+            provider._rate_limiter,
+            "execute_with_retry",
+            new_callable=AsyncMock,
+            side_effect=error,
+        ):
+            await _collect_stream(provider, _make_request())
+
+        assert provider._rate_limiter.is_blocked()
+        assert not other._rate_limiter.is_blocked()
 
 
 class TestProcessToolCall:
@@ -456,7 +475,7 @@ class TestStreamChunkEdgeCases:
                 return_value=stream_mock,
             ),
             patch.object(
-                provider._global_rate_limiter,
+                provider._rate_limiter,
                 "wait_if_blocked",
                 new_callable=AsyncMock,
                 return_value=False,
@@ -492,7 +511,7 @@ class TestStreamChunkEdgeCases:
                 return_value=stream_mock,
             ),
             patch.object(
-                provider._global_rate_limiter,
+                provider._rate_limiter,
                 "wait_if_blocked",
                 new_callable=AsyncMock,
                 return_value=False,
@@ -523,7 +542,7 @@ class TestStreamChunkEdgeCases:
                 return_value=stream_mock,
             ),
             patch.object(
-                provider._global_rate_limiter,
+                provider._rate_limiter,
                 "wait_if_blocked",
                 new_callable=AsyncMock,
                 return_value=False,

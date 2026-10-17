@@ -37,7 +37,7 @@ A lightweight proxy that routes Claude Code's Anthropic API calls to **NVIDIA NI
 | **Heuristic Tool Parser**  | Models outputting tool calls as text are auto-parsed into structured tool use                                        |
 | **Request Optimization**   | 5 categories of trivial API calls intercepted locally, saving quota and latency                                      |
 | **Discord Bot**            | Remote autonomous coding with tree-based threading, session persistence, and live progress (Telegram also supported) |
-| **Smart Rate Limiting**    | Proactive rolling-window throttle + reactive 429 exponential backoff + optional concurrency cap across all providers |
+| **Smart Rate Limiting**    | Proactive rolling-window throttle + reactive 429 exponential backoff + optional concurrency cap, per provider          |
 | **Subagent Control**       | Task tool interception forces `run_in_background=False`. No runaway subagents                                        |
 | **Extensible**             | Clean `BaseProvider` and `MessagingPlatform` ABCs. Add new providers or platforms easily                             |
 
@@ -411,9 +411,9 @@ Browse: [model.lmstudio.ai](https://model.lmstudio.ai)
 | `LM_STUDIO_BASE_URL`              | LM Studio server URL                                                               | `http://localhost:1234/v1`                        |
 | `PROXY_AUTH_TOKEN`                | Token clients must send as `ANTHROPIC_AUTH_TOKEN` (empty = no check)               | `""`                                              |
 | `LOG_LEVEL`                       | `server.log` level; `DEBUG` also logs full request payloads (prompts, files)      | `INFO`                                            |
-| `PROVIDER_RATE_LIMIT`             | LLM API requests per window                                                        | `40`                                              |
+| `PROVIDER_RATE_LIMIT`             | LLM API requests per window, per provider                                          | `40`                                              |
 | `PROVIDER_RATE_WINDOW`            | Rate limit window (seconds)                                                        | `60`                                              |
-| `PROVIDER_MAX_CONCURRENCY`        | Max simultaneous open provider streams                                             | `5`                                               |
+| `PROVIDER_MAX_CONCURRENCY`        | Max simultaneous open streams, per provider                                        | `5`                                               |
 | `HTTP_READ_TIMEOUT`               | Read timeout for provider API requests (seconds)                                   | `120`                                             |
 | `HTTP_WRITE_TIMEOUT`              | Write timeout for provider API requests (seconds)                                  | `10`                                              |
 | `HTTP_CONNECT_TIMEOUT`            | Connect timeout for provider API requests (seconds)                                | `2`                                               |
