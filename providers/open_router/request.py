@@ -5,6 +5,7 @@ from typing import Any
 from loguru import logger
 
 from providers.common.message_converter import build_base_request_body
+from providers.common.utils import thinking_enabled
 
 OPENROUTER_DEFAULT_MAX_TOKENS = 81920
 
@@ -28,11 +29,7 @@ def build_request_body(request_data: Any) -> dict:
     if request_extra:
         extra_body.update(request_extra)
 
-    thinking = getattr(request_data, "thinking", None)
-    thinking_enabled = (
-        thinking.enabled if thinking and hasattr(thinking, "enabled") else True
-    )
-    if thinking_enabled:
+    if thinking_enabled(request_data):
         extra_body.setdefault("reasoning", {"enabled": True})
 
     if extra_body:

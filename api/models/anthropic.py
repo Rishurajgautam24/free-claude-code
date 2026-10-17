@@ -77,7 +77,14 @@ class Tool(BaseModel):
 
 
 class ThinkingConfig(BaseModel):
-    enabled: bool = True
+    """Anthropic `thinking`: {"type": "enabled" | "adaptive" | "disabled", ...}."""
+
+    type: str = "enabled"
+    budget_tokens: int | None = None
+
+    @property
+    def enabled(self) -> bool:
+        return self.type != "disabled"
 
 
 # =============================================================================

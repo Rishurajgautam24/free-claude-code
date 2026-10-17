@@ -6,7 +6,7 @@ from loguru import logger
 
 from config.nim import NimSettings
 from providers.common.message_converter import build_base_request_body
-from providers.common.utils import set_if_not_none
+from providers.common.utils import set_if_not_none, thinking_enabled
 
 
 def _set_extra(
@@ -63,14 +63,16 @@ def build_request_body(request_data: Any, nim: NimSettings) -> dict:
     if request_extra:
         extra_body.update(request_extra)
 
-    # Handle thinking/reasoning mode
-    extra_body.setdefault("thinking", {"type": "enabled"})
+    # Thinking/reasoning mode follows the request (Claude Code omits or disables
+    # it for side requests such as compaction, which saves reasoning tokens).
+    thinking = thinking_enabled(request_data)
+    extra_body.setdefault("thinking", {"type": "enabled" if thinking else "disabled"})
     extra_body.setdefault("reasoning_split", True)
     extra_body.setdefault(
         "chat_template_kwargs",
         {
-            "thinking": True,
-            "enable_thinking": True,
+            "thinking": thinking,
+            "enable_thinking": thinking,
             "reasoning_split": True,
             "clear_thinking": False,
         },
