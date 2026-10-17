@@ -26,6 +26,10 @@ OPENAI_COMPATIBLE_PRESETS = {
     ),
 }
 
+# /v1/models lists configured models as "<prefix><provider/model>". Claude Code's
+# model picker only keeps IDs containing "claude"; picking one routes to that model.
+MODEL_ID_PREFIX = "claude-fcc/"
+
 VALID_PROVIDERS = (
     "nvidia_nim",
     "open_router",
@@ -224,6 +228,9 @@ class Settings(BaseSettings):
         Classifies the incoming Claude model (opus/sonnet/haiku) and
         returns the model-specific override if configured, otherwise the fallback MODEL.
         """
+        picked = claude_model_name.removeprefix(MODEL_ID_PREFIX)
+        if picked != claude_model_name and picked.split("/", 1)[0] in VALID_PROVIDERS:
+            return picked  # chosen in Claude Code's /model picker
         name_lower = claude_model_name.lower()
         if "opus" in name_lower and self.model_opus is not None:
             return self.model_opus
@@ -232,6 +239,21 @@ class Settings(BaseSettings):
         if "sonnet" in name_lower and self.model_sonnet is not None:
             return self.model_sonnet
         return self.model
+
+    def configured_models(self) -> dict[str, list[str]]:
+        """Every model in MODEL/MODEL_* (chains included) -> the settings using it."""
+        models: dict[str, list[str]] = {}
+        for setting, value in (
+            ("MODEL_OPUS", self.model_opus),
+            ("MODEL_SONNET", self.model_sonnet),
+            ("MODEL_HAIKU", self.model_haiku),
+            ("MODEL", self.model),
+        ):
+            for i, model in enumerate((value or "").split(",") if value else []):
+                models.setdefault(model, []).append(
+                    setting if i == 0 else f"{setting} fallback {i}"
+                )
+        return models
 
     @staticmethod
     def parse_provider_type(model_string: str) -> str:

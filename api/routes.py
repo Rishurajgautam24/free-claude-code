@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse
 from loguru import logger
 from starlette.types import Message, Send
 
-from config.settings import Settings
+from config.settings import MODEL_ID_PREFIX, Settings
 from providers.common import get_user_facing_error_message
 from providers.exceptions import InvalidRequestError, ProviderError
 from providers.logging_utils import build_request_summary, log_request_compact
@@ -202,6 +202,27 @@ async def root(settings: Settings = Depends(get_settings)):
         "status": "ok",
         "provider": settings.provider_type,
         "model": settings.model,
+    }
+
+
+@router.get("/v1/models", dependencies=[Depends(require_auth)])
+async def list_models(settings: Settings = Depends(get_settings)):
+    """Configured models, for Claude Code's /model picker (gateway model discovery)."""
+    data = [
+        {
+            "type": "model",
+            "id": f"{MODEL_ID_PREFIX}{model}",
+            "display_name": model,
+            "description": ", ".join(uses),
+            "created_at": "1970-01-01T00:00:00Z",
+        }
+        for model, uses in settings.configured_models().items()
+    ]
+    return {
+        "data": data,
+        "has_more": False,
+        "first_id": data[0]["id"] if data else None,
+        "last_id": data[-1]["id"] if data else None,
     }
 
 
