@@ -55,7 +55,8 @@ class SystemContent(BaseModel):
 # Message Types
 # =============================================================================
 class Message(BaseModel):
-    role: Literal["user", "assistant"]
+    # Claude Code also sends mid-conversation "system" messages (e.g. environment info).
+    role: Literal["user", "assistant", "system"]
     content: (
         str
         | list[
