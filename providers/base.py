@@ -41,7 +41,12 @@ class BaseProvider(ABC):
         input_tokens: int = 0,
         *,
         request_id: str | None = None,
+        raise_before_output: bool = False,
     ) -> AsyncIterator[str]:
-        """Stream response in Anthropic SSE format."""
+        """Stream response in Anthropic SSE format.
+
+        With raise_before_output, an error before any content block is raised
+        (so the caller can fall back) instead of streamed as an error message.
+        """
         if False:
             yield ""  # Required for ty/mypy to accept abstract async generator

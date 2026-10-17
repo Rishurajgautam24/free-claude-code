@@ -136,21 +136,24 @@ class Settings(BaseSettings):
     @field_validator("model", "model_opus", "model_sonnet", "model_haiku")
     @classmethod
     def validate_model_format(cls, v: str | None) -> str | None:
+        """Validate `provider/model`, or a comma-separated fallback chain of them."""
         if v is None:
             return None
-        if "/" not in v:
-            raise ValueError(
-                f"Model must be prefixed with provider type. "
-                f"Valid providers: {', '.join(VALID_PROVIDERS)}. "
-                f"Format: provider_type/model/name"
-            )
-        provider = v.split("/", 1)[0]
-        if provider not in VALID_PROVIDERS:
-            raise ValueError(
-                f"Invalid provider: '{provider}'. "
-                f"Supported: 'nvidia_nim', 'open_router', 'lmstudio'"
-            )
-        return v
+        models = [m.strip() for m in v.split(",")]
+        for model in models:
+            if "/" not in model:
+                raise ValueError(
+                    f"Model must be prefixed with provider type. "
+                    f"Valid providers: {', '.join(VALID_PROVIDERS)}. "
+                    f"Format: provider_type/model/name"
+                )
+            provider = model.split("/", 1)[0]
+            if provider not in VALID_PROVIDERS:
+                raise ValueError(
+                    f"Invalid provider: '{provider}'. "
+                    f"Supported: {', '.join(VALID_PROVIDERS)}"
+                )
+        return ",".join(models)
 
     @model_validator(mode="after")
     def check_nvidia_nim_api_key(self) -> Settings:

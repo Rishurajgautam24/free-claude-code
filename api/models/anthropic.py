@@ -109,7 +109,8 @@ class MessagesRequest(BaseModel):
 
         resolved_full = settings.resolve_model(self.original_model)
         self.resolved_provider_model = resolved_full
-        self.model = Settings.parse_model_name(resolved_full)
+        # A fallback chain "a,b" is tried in order by the route; start with the first.
+        self.model = Settings.parse_model_name(resolved_full.split(",")[0])
 
         if self.model != self.original_model:
             logger.debug(f"MODEL MAPPING: '{self.original_model}' -> '{self.model}'")
@@ -131,4 +132,4 @@ class TokenCountRequest(BaseModel):
         """Map any Claude model name to the configured model (model-aware)."""
         settings = get_settings()
         resolved_full = settings.resolve_model(v)
-        return Settings.parse_model_name(resolved_full)
+        return Settings.parse_model_name(resolved_full.split(",")[0])
