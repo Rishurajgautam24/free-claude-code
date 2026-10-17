@@ -180,6 +180,14 @@ class AnthropicToOpenAIConverter:
         return None
 
 
+def convert_tool_choice(choice: dict[str, Any]) -> str | dict[str, Any] | None:
+    """Map Anthropic tool_choice ({"type": auto|any|tool|none}) to OpenAI's format."""
+    kind = choice.get("type")
+    if kind == "tool":
+        return {"type": "function", "function": {"name": choice.get("name")}}
+    return {"auto": "auto", "any": "required", "none": "none"}.get(kind)
+
+
 def build_base_request_body(
     request_data: Any,
     *,
@@ -219,8 +227,9 @@ def build_base_request_body(
     tools = getattr(request_data, "tools", None)
     if tools:
         body["tools"] = AnthropicToOpenAIConverter.convert_tools(tools)
-    tool_choice = getattr(request_data, "tool_choice", None)
-    if tool_choice:
-        body["tool_choice"] = tool_choice
+        # OpenAI rejects tool_choice without tools, so only map it alongside them.
+        tool_choice = getattr(request_data, "tool_choice", None)
+        if tool_choice:
+            set_if_not_none(body, "tool_choice", convert_tool_choice(tool_choice))
 
     return body
