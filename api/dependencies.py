@@ -1,9 +1,11 @@
 """Dependency injection for FastAPI."""
 
-from fastapi import HTTPException
+import hmac
+
+from fastapi import Depends, HTTPException, Request
 from loguru import logger
 
-from config.settings import Settings
+from config.settings import VALID_PROVIDERS, Settings
 from config.settings import get_settings as _get_settings
 from providers.base import BaseProvider, ProviderConfig
 from providers.common import get_user_facing_error_message
@@ -19,6 +21,26 @@ _providers: dict[str, BaseProvider] = {}
 def get_settings() -> Settings:
     """Get application settings via dependency injection."""
     return _get_settings()
+
+
+def require_auth(
+    request: Request, settings: Settings = Depends(get_settings)
+) -> str | None:
+    """Check the client token `<token>[:<model>]`; return the model override, if any.
+
+    A model without a known provider prefix uses the default MODEL's provider.
+    """
+    auth = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    token, _, model = (auth or request.headers.get("x-api-key", "")).partition(":")
+    expected = settings.proxy_auth_token
+    if expected and not hmac.compare_digest(token.encode(), expected.encode()):
+        raise AuthenticationError("Invalid proxy auth token")
+    if not model:
+        return None
+    provider, sep, _ = model.partition("/")
+    if not sep or provider not in VALID_PROVIDERS:
+        return f"{settings.provider_type}/{model}"
+    return model
 
 
 def _create_provider_for_type(provider_type: str, settings: Settings) -> BaseProvider:

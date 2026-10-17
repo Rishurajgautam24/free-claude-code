@@ -89,6 +89,7 @@ async def lifespan(app: FastAPI):
                 api_url=api_url,
                 allowed_dirs=allowed_dirs,
                 plans_directory=plans_directory,
+                auth_token=settings.proxy_auth_token,
             )
 
             # Initialize session store

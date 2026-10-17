@@ -125,7 +125,7 @@ MODEL="nvidia_nim/z-ai/glm4.7"                      # fallback
 **Terminal 1:** Start the proxy server:
 
 ```bash
-uv run uvicorn server:app --host 0.0.0.0 --port 8082
+uv run uvicorn server:app --port 8082
 ```
 
 **Terminal 2:** Run Claude Code:
@@ -135,6 +135,8 @@ ANTHROPIC_AUTH_TOKEN="freecc" ANTHROPIC_BASE_URL="http://localhost:8082" claude
 ```
 
 That's it! Claude Code now uses your configured provider for free.
+
+> The proxy only accepts connections from this machine. To use it from WSL, Docker or another device, set `PROXY_AUTH_TOKEN` in `.env`, start the server with `--host 0.0.0.0`, and send the same token as `ANTHROPIC_AUTH_TOKEN`.
 
 <details>
 <summary><b>VSCode Extension Setup</b></summary>
@@ -182,7 +184,7 @@ Then reload your shell (`source ~/.zshrc` or `source ~/.bashrc`) and run `claude
 **Skip the picker with a fixed model** (no picker needed):
 
 ```bash
-alias claude-kimi='ANTHROPIC_BASE_URL="http://localhost:8082" ANTHROPIC_AUTH_TOKEN="freecc:moonshotai/kimi-k2.5" claude'
+alias claude-kimi='ANTHROPIC_BASE_URL="http://localhost:8082" ANTHROPIC_AUTH_TOKEN="freecc:nvidia_nim/moonshotai/kimi-k2.5" claude'
 ```
 
 </details>
@@ -273,7 +275,7 @@ ALLOWED_DIR="C:/Users/yourname/projects"
 4. **Start the server:**
 
 ```bash
-uv run uvicorn server:app --host 0.0.0.0 --port 8082
+uv run uvicorn server:app --port 8082
 ```
 
 5. **Invite the bot** (OAuth2 URL Generator, scopes: `bot`, permissions: Read Messages, Send Messages, Manage Messages, Read Message History). Send a task to an allowed channel and Claude responds with live thinking tokens and tool calls. Use commands above to cancel or clear.
@@ -407,6 +409,7 @@ Browse: [model.lmstudio.ai](https://model.lmstudio.ai)
 | `NVIDIA_NIM_API_KEY`              | NVIDIA API key (NIM provider)                                                      | required                                          |
 | `OPENROUTER_API_KEY`              | OpenRouter API key (OpenRouter provider)                                           | required                                          |
 | `LM_STUDIO_BASE_URL`              | LM Studio server URL                                                               | `http://localhost:1234/v1`                        |
+| `PROXY_AUTH_TOKEN`                | Token clients must send as `ANTHROPIC_AUTH_TOKEN` (empty = no check)               | `""`                                              |
 | `PROVIDER_RATE_LIMIT`             | LLM API requests per window                                                        | `40`                                              |
 | `PROVIDER_RATE_WINDOW`            | Rate limit window (seconds)                                                        | `60`                                              |
 | `PROVIDER_MAX_CONCURRENCY`        | Max simultaneous open provider streams                                             | `5`                                               |
