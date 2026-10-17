@@ -33,6 +33,7 @@ A lightweight proxy that routes Claude Code's Anthropic API calls to **NVIDIA NI
 | **Drop-in Replacement**    | Set 2 env vars. No modifications to Claude Code CLI or VSCode extension needed                                       |
 | **10 Providers**           | NVIDIA NIM, OpenRouter, LM Studio, Ollama, Groq, Gemini, Cerebras, Mistral, DeepSeek, Together + any OpenAI-compatible API |
 | **Per-Model Mapping**      | Route Opus / Sonnet / Haiku requests to different models and providers. Mix providers freely per model               |
+| **Model Picker**           | Your configured models appear in Claude Code’s `/model` picker; switch backend models mid-session without restarting |
 | **Thinking Token Support** | Parses `<think>` tags and `reasoning_content` into native Claude thinking blocks                                     |
 | **Robust Tool Calls**      | Native and text-written tool calls become real tool use, even when providers stream ids and names in pieces          |
 | **Image Input**            | Pasted screenshots reach vision models; text-only models automatically get the request without images                |
@@ -218,6 +219,19 @@ When `PROXY_AUTH_TOKEN` is set, every API call must send it (`Authorization: Bea
 5. **If you see the login screen** ("How do you want to log in?"): Click **Anthropic Console**, then authorize. The extension will start working. You may be redirected to buy credits in the browser; ignore it, the extension already works.
 
 To switch back to Anthropic models, comment out the added block and reload extensions.
+
+</details>
+
+<details>
+<summary><b>Switch models inside Claude Code</b> (<code>/model</code> picker)</summary>
+
+The proxy lists every model from your `MODEL*` settings (fallback chains included) at `/v1/models`. Turn on Claude Code's gateway model discovery and they show up in `/model`, labelled with the setting that uses them:
+
+```bash
+CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1 ANTHROPIC_AUTH_TOKEN="freecc" ANTHROPIC_BASE_URL="http://localhost:8082" claude
+```
+
+Picking one (its ID looks like `claude-fcc/groq/llama-3.3-70b-versatile`) sends that session's requests straight to that model; you can also start with it: `claude --model claude-fcc/<provider>/<model>`. Claude Code refreshes the list at each startup.
 
 </details>
 
