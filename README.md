@@ -277,7 +277,7 @@ alias claude-kimi='ANTHROPIC_BASE_URL="http://localhost:8082" ANTHROPIC_AUTH_TOK
 - **Transparent proxy**: Claude Code sends standard Anthropic API requests to the proxy server
 - **Per-model routing**: Opus / Sonnet / Haiku requests are resolved to their model-specific backend and provider, with the default `MODEL` as fallback
 - **Request optimization**: 5 categories of trivial requests (quota probes, title generation, prefix detection, suggestions, filepath extraction) are intercepted and responded to instantly without using API quota
-- **Format translation**: real requests are translated from Anthropic format to the provider's OpenAI-compatible format and streamed back
+- **Format translation**: real requests are translated from Anthropic format to the provider's OpenAI-compatible format and streamed back. Mid-conversation `system` messages that current Claude Code sends become user turns, since many models only accept a leading system prompt
 - **Thinking tokens**: `<think>` tags and `reasoning_content` fields are converted into native Claude thinking blocks so Claude Code renders them correctly
 - **Images**: pasted images are sent as OpenAI `image_url` parts. If a model rejects them, the request is retried once without images and that model is remembered as text-only. Images inside tool results (e.g. `Read` on a PNG) become a short placeholder instead of raw base64
 - **Tool calls**: native tool calls and tool calls a model writes as text become Anthropic `tool_use` blocks; a turn with tool calls always ends with `stop_reason: tool_use`

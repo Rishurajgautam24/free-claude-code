@@ -39,7 +39,20 @@ class AnthropicToOpenAIConverter:
             role = msg.role
             content = msg.content
 
-            if isinstance(content, str):
+            if role == "system":
+                # Many OpenAI-compatible models only accept a leading system message;
+                # Claude Code itself falls back to user-turn reminders, so do the same.
+                text = (
+                    content
+                    if isinstance(content, str)
+                    else "\n".join(
+                        get_block_attr(b, "text", "")
+                        for b in content
+                        if get_block_type(b) == "text"
+                    )
+                )
+                result.append({"role": "user", "content": text})
+            elif isinstance(content, str):
                 result.append({"role": role, "content": content})
             elif isinstance(content, list):
                 if role == "assistant":
