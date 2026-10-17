@@ -7,7 +7,33 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .nim import NimSettings
 
-VALID_PROVIDERS = ("nvidia_nim", "open_router", "lmstudio")
+# OpenAI-compatible cloud APIs that only need an API key: name -> (base URL, key page)
+OPENAI_COMPATIBLE_PRESETS = {
+    "groq": ("https://api.groq.com/openai/v1", "https://console.groq.com/keys"),
+    "cerebras": ("https://api.cerebras.ai/v1", "https://cloud.cerebras.ai"),
+    "gemini": (
+        "https://generativelanguage.googleapis.com/v1beta/openai",
+        "https://aistudio.google.com/apikey",
+    ),
+    "mistral": ("https://api.mistral.ai/v1", "https://console.mistral.ai/api-keys"),
+    "deepseek": (
+        "https://api.deepseek.com/v1",
+        "https://platform.deepseek.com/api_keys",
+    ),
+    "together": (
+        "https://api.together.xyz/v1",
+        "https://api.together.ai/settings/api-keys",
+    ),
+}
+
+VALID_PROVIDERS = (
+    "nvidia_nim",
+    "open_router",
+    "lmstudio",
+    "ollama",
+    "custom",
+    *OPENAI_COMPATIBLE_PRESETS,
+)
 
 
 class Settings(BaseSettings):
@@ -30,6 +56,20 @@ class Settings(BaseSettings):
         default="http://localhost:1234/v1",
         validation_alias="LM_STUDIO_BASE_URL",
     )
+
+    # ==================== OpenAI-compatible providers ====================
+    groq_api_key: str = Field(default="", validation_alias="GROQ_API_KEY")
+    cerebras_api_key: str = Field(default="", validation_alias="CEREBRAS_API_KEY")
+    gemini_api_key: str = Field(default="", validation_alias="GEMINI_API_KEY")
+    mistral_api_key: str = Field(default="", validation_alias="MISTRAL_API_KEY")
+    deepseek_api_key: str = Field(default="", validation_alias="DEEPSEEK_API_KEY")
+    together_api_key: str = Field(default="", validation_alias="TOGETHER_API_KEY")
+    ollama_base_url: str = Field(
+        default="http://localhost:11434/v1", validation_alias="OLLAMA_BASE_URL"
+    )
+    # Any other OpenAI-compatible endpoint, used as MODEL="custom/<model>"
+    custom_base_url: str = Field(default="", validation_alias="CUSTOM_BASE_URL")
+    custom_api_key: str = Field(default="", validation_alias="CUSTOM_API_KEY")
 
     # ==================== Model ====================
     # All Claude model requests are mapped to this single model (fallback)

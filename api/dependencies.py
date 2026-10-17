@@ -5,7 +5,7 @@ import hmac
 from fastapi import Depends, HTTPException, Request
 from loguru import logger
 
-from config.settings import VALID_PROVIDERS, Settings
+from config.settings import OPENAI_COMPATIBLE_PRESETS, VALID_PROVIDERS, Settings
 from config.settings import get_settings as _get_settings
 from providers.base import BaseProvider, ProviderConfig
 from providers.common import get_user_facing_error_message
@@ -43,61 +43,76 @@ def require_auth(
     return model
 
 
+def _provider_config(settings: Settings, api_key: str, base_url: str) -> ProviderConfig:
+    return ProviderConfig(
+        api_key=api_key,
+        base_url=base_url,
+        rate_limit=settings.provider_rate_limit,
+        rate_window=settings.provider_rate_window,
+        max_concurrency=settings.provider_max_concurrency,
+        http_read_timeout=settings.http_read_timeout,
+        http_write_timeout=settings.http_write_timeout,
+        http_connect_timeout=settings.http_connect_timeout,
+    )
+
+
+def _require_key(key: str, env_var: str, key_page: str) -> str:
+    if not key.strip():
+        raise AuthenticationError(
+            f"{env_var} is not set. Add it to your .env file. Get a key at {key_page}"
+        )
+    return key
+
+
 def _create_provider_for_type(provider_type: str, settings: Settings) -> BaseProvider:
     """Construct and return a new provider instance for the given provider type."""
     if provider_type == "nvidia_nim":
-        if not settings.nvidia_nim_api_key or not settings.nvidia_nim_api_key.strip():
-            raise AuthenticationError(
-                "NVIDIA_NIM_API_KEY is not set. Add it to your .env file. "
-                "Get a key at https://build.nvidia.com/settings/api-keys"
-            )
-        config = ProviderConfig(
-            api_key=settings.nvidia_nim_api_key,
-            base_url=NVIDIA_NIM_BASE_URL,
-            rate_limit=settings.provider_rate_limit,
-            rate_window=settings.provider_rate_window,
-            max_concurrency=settings.provider_max_concurrency,
-            http_read_timeout=settings.http_read_timeout,
-            http_write_timeout=settings.http_write_timeout,
-            http_connect_timeout=settings.http_connect_timeout,
+        key = _require_key(
+            settings.nvidia_nim_api_key,
+            "NVIDIA_NIM_API_KEY",
+            "https://build.nvidia.com/settings/api-keys",
         )
-        return NvidiaNimProvider(config, nim_settings=settings.nim)
+        return NvidiaNimProvider(
+            _provider_config(settings, key, NVIDIA_NIM_BASE_URL),
+            nim_settings=settings.nim,
+        )
     if provider_type == "open_router":
-        if not settings.open_router_api_key or not settings.open_router_api_key.strip():
-            raise AuthenticationError(
-                "OPENROUTER_API_KEY is not set. Add it to your .env file. "
-                "Get a key at https://openrouter.ai/keys"
-            )
-        config = ProviderConfig(
-            api_key=settings.open_router_api_key,
-            base_url=OPENROUTER_BASE_URL,
-            rate_limit=settings.provider_rate_limit,
-            rate_window=settings.provider_rate_window,
-            max_concurrency=settings.provider_max_concurrency,
-            http_read_timeout=settings.http_read_timeout,
-            http_write_timeout=settings.http_write_timeout,
-            http_connect_timeout=settings.http_connect_timeout,
+        key = _require_key(
+            settings.open_router_api_key,
+            "OPENROUTER_API_KEY",
+            "https://openrouter.ai/keys",
         )
-        return OpenRouterProvider(config)
+        return OpenRouterProvider(_provider_config(settings, key, OPENROUTER_BASE_URL))
     if provider_type == "lmstudio":
-        config = ProviderConfig(
-            api_key="lm-studio",
-            base_url=settings.lm_studio_base_url,
-            rate_limit=settings.provider_rate_limit,
-            rate_window=settings.provider_rate_window,
-            max_concurrency=settings.provider_max_concurrency,
-            http_read_timeout=settings.http_read_timeout,
-            http_write_timeout=settings.http_write_timeout,
-            http_connect_timeout=settings.http_connect_timeout,
+        return LMStudioProvider(
+            _provider_config(settings, "lm-studio", settings.lm_studio_base_url)
         )
-        return LMStudioProvider(config)
+    if provider_type == "ollama":
+        return LMStudioProvider(
+            _provider_config(settings, "ollama", settings.ollama_base_url), "OLLAMA"
+        )
+    if provider_type == "custom":
+        if not settings.custom_base_url.strip():
+            raise AuthenticationError(
+                "CUSTOM_BASE_URL is not set. Add your OpenAI-compatible endpoint to .env"
+            )
+        config = _provider_config(
+            settings, settings.custom_api_key or "none", settings.custom_base_url
+        )
+        return LMStudioProvider(config, "CUSTOM")
+    if provider_type in OPENAI_COMPATIBLE_PRESETS:
+        base_url, key_page = OPENAI_COMPATIBLE_PRESETS[provider_type]
+        env_var = f"{provider_type.upper()}_API_KEY"
+        key = _require_key(getattr(settings, env_var.lower()), env_var, key_page)
+        return LMStudioProvider(
+            _provider_config(settings, key, base_url), provider_type.upper()
+        )
     logger.error(
-        "Unknown provider_type: '{}'. Supported: 'nvidia_nim', 'open_router', 'lmstudio'",
-        provider_type,
+        "Unknown provider_type: '{}'. Supported: {}", provider_type, VALID_PROVIDERS
     )
     raise ValueError(
         f"Unknown provider_type: '{provider_type}'. "
-        f"Supported: 'nvidia_nim', 'open_router', 'lmstudio'"
+        f"Supported: {', '.join(VALID_PROVIDERS)}"
     )
 
 
