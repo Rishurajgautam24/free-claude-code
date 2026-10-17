@@ -314,9 +314,9 @@ async def test_stream_response_error_path(open_router_provider):
     ) as mock_create:
         mock_create.return_value = mock_stream()
         events = [e async for e in open_router_provider.stream_response(req)]
-        # Error is emitted; message_stop/done indicates stream completed
+        # The stream ends with an Anthropic error event
         assert any("API failed" in e for e in events)
-        assert any("message_stop" in e for e in events)
+        assert events[-1].startswith("event: error")
 
 
 @pytest.mark.asyncio

@@ -7,13 +7,13 @@ from collections.abc import AsyncIterator
 
 import anyio
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from loguru import logger
 from starlette.types import Message, Send
 
 from config.settings import MODEL_ID_PREFIX, Settings
 from providers.common import get_user_facing_error_message
-from providers.exceptions import InvalidRequestError, ProviderError
+from providers.exceptions import APIError, InvalidRequestError, ProviderError
 from providers.logging_utils import build_request_summary, log_request_compact
 
 from .dependencies import get_provider_for_type, get_settings, require_auth
@@ -66,12 +66,48 @@ class KeepAliveStreamingResponse(StreamingResponse):
             tg.cancel_scope.cancel()
 
 
+async def collect_message(events: AsyncIterator[str]) -> dict:
+    """Assemble streamed Anthropic SSE events into one Message (for stream=false)."""
+    message: dict = {}
+    blocks: dict[int, dict] = {}
+    tool_json: dict[int, list[str]] = {}
+    async for event in events:
+        name, _, data = event.strip().partition("\ndata: ")
+        payload = json.loads(data)
+        match name.removeprefix("event: "):
+            case "message_start":
+                message = payload["message"]
+            case "content_block_start":
+                blocks[payload["index"]] = payload["content_block"]
+            case "content_block_delta":
+                block, delta = blocks[payload["index"]], payload["delta"]
+                if delta["type"] == "input_json_delta":
+                    tool_json.setdefault(payload["index"], []).append(
+                        delta["partial_json"]
+                    )
+                for key in ("text", "thinking", "signature"):
+                    if key in delta:
+                        block[key] = block.get(key, "") + delta[key]
+            case "content_block_stop":
+                if payload["index"] in tool_json:
+                    raw = "".join(tool_json.pop(payload["index"]))
+                    blocks[payload["index"]]["input"] = json.loads(raw or "{}")
+            case "message_delta":
+                message.update(payload["delta"])
+                message.setdefault("usage", {}).update(payload.get("usage", {}))
+            case "error":
+                raise APIError(payload["error"]["message"])
+    message["content"] = [blocks[i] for i in sorted(blocks)]
+    return message
+
+
 async def stream_with_fallback(
     request_data: MessagesRequest,
     models: list[str],
     first_events: AsyncIterator[str],
     input_tokens: int,
     request_id: str,
+    raise_on_last: bool = False,
 ) -> AsyncIterator[str]:
     """Relay `first_events`; if models[0] fails before any content, try the next model.
 
@@ -88,7 +124,7 @@ async def stream_with_fallback(
                     request_data,
                     input_tokens=input_tokens,
                     request_id=request_id,
-                    raise_before_output=not is_last,
+                    raise_before_output=raise_on_last or not is_last,
                 )
             async for event in events:
                 # The client already got message_start from the first attempt.
@@ -141,12 +177,24 @@ async def create_message(
         input_tokens = get_token_count(
             request_data.messages, request_data.system, request_data.tools
         )
+        streaming = request_data.stream is not False
         first_events = provider.stream_response(
             request_data,
             input_tokens=input_tokens,
             request_id=request_id,
-            raise_before_output=len(models) > 1,
+            # Non-streaming: an error before output becomes a real HTTP error status.
+            raise_before_output=len(models) > 1 or not streaming,
         )
+        if not streaming:
+            events = stream_with_fallback(
+                request_data,
+                models,
+                first_events,
+                input_tokens,
+                request_id,
+                raise_on_last=True,
+            )
+            return JSONResponse(await collect_message(events))
         return KeepAliveStreamingResponse(
             stream_with_fallback(
                 request_data, models, first_events, input_tokens, request_id

@@ -316,21 +316,17 @@ class TestSSEBuilderStateManagement:
 
 
 class TestSSEBuilderError:
-    """Tests for emit_error."""
+    """Tests for error_event."""
 
-    def test_emit_error(self):
+    def test_error_event(self):
         builder = SSEBuilder("msg_1", "model")
-        events = list(builder.emit_error("Something went wrong"))
+        event = builder.error_event("overloaded_error", "Something went wrong")
 
-        assert len(events) == 3  # start, delta, stop
-        start_data = _parse_sse(events[0])
-        assert start_data["content_block"]["type"] == "text"
-
-        delta_data = _parse_sse(events[1])
-        assert delta_data["delta"]["text"] == "Something went wrong"
-
-        stop_data = _parse_sse(events[2])
-        assert stop_data["type"] == "content_block_stop"
+        assert event.startswith("event: error\n")
+        assert _parse_sse(event) == {
+            "type": "error",
+            "error": {"type": "overloaded_error", "message": "Something went wrong"},
+        }
 
 
 class TestSSEBuilderTokenEstimation:

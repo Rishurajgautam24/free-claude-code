@@ -289,7 +289,8 @@ class TestLMStudioStreamingExceptionHandling:
         event_text = "".join(events)
         assert "message_start" in event_text
         assert "API failed" in event_text
-        assert "message_stop" in event_text
+        assert "event: error" in event_text
+        assert "message_stop" not in event_text  # an error event ends the stream
 
     @pytest.mark.asyncio
     async def test_error_after_partial_content(self, lmstudio_provider):
@@ -311,7 +312,8 @@ class TestLMStudioStreamingExceptionHandling:
         event_text = "".join(events)
         assert "Hello" in event_text
         assert "Connection lost" in event_text
-        assert "message_stop" in event_text
+        assert "event: error" in event_text
+        assert "message_stop" not in event_text  # an error event ends the stream
 
     @pytest.mark.asyncio
     async def test_empty_response_gets_space(self, lmstudio_provider):
