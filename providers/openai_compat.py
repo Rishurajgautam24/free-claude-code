@@ -72,7 +72,7 @@ class OpenAICompatibleProvider(BaseProvider):
         """Release HTTP client resources."""
         client = getattr(self, "_client", None)
         if client is not None:
-            await client.aclose()
+            await client.close()
 
     @abstractmethod
     def _build_request_body(self, request: Any) -> dict:
