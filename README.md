@@ -425,7 +425,7 @@ Browse: [model.lmstudio.ai](https://model.lmstudio.ai)
 | `DISCORD_BOT_TOKEN`               | Discord Bot Token                                                                  | `""`                                              |
 | `ALLOWED_DISCORD_CHANNELS`        | Comma-separated channel IDs (empty = none allowed)                                 | `""`                                              |
 | `TELEGRAM_BOT_TOKEN`              | Telegram Bot Token                                                                 | `""`                                              |
-| `ALLOWED_TELEGRAM_USER_ID`        | Allowed Telegram User ID                                                           | `""`                                              |
+| `ALLOWED_TELEGRAM_USER_ID`        | Allowed Telegram User ID (empty = nobody allowed)                                  | `""`                                              |
 | `VOICE_NOTE_ENABLED`              | Enable voice note handling                                                         | `true`                                            |
 | `WHISPER_MODEL`                   | Local Whisper model size                                                           | `base`                                            |
 | `WHISPER_DEVICE`                  | `cpu` \| `cuda`                                                                    | `cpu`                                             |
