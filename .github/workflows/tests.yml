@@ -50,3 +50,26 @@ jobs:
 
       - name: Run tests
         run: uv run pytest -v --tb=short
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Build image
+        run: docker build -t free-claude-code .
+
+      - name: Smoke test
+        run: |
+          docker run -d --name fcc -p 8082:8082 -e MODEL=lmstudio/test-model free-claude-code
+          for i in $(seq 1 30); do curl -sf localhost:8082/health && break; sleep 1; done
+          curl -sf localhost:8082/health
+          curl -sf localhost:8082/v1/models | grep -q '"claude-fcc/lmstudio/test-model"'
+          echo "image starts and serves the API"
+
+      - name: Container logs
+        if: failure()
+        run: docker logs fcc

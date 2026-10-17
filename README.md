@@ -199,6 +199,22 @@ uv run python doctor.py
 ```
 
 <details>
+<summary><b>Run with Docker</b></summary>
+
+With your `.env` in place:
+
+```bash
+docker compose up -d --build
+```
+
+The proxy is then at `http://localhost:8082`, published on this machine only. Point Claude Code at it as above.
+
+- LM Studio or Ollama running on your machine (not in Docker) is reached through `host.docker.internal`, e.g. `LM_STUDIO_BASE_URL="http://host.docker.internal:1234/v1"`.
+- The image runs the proxy only; the Discord/Telegram bot needs the Claude Code CLI and runs outside Docker.
+
+</details>
+
+<details>
 <summary><b>Remote access & security</b> (WSL, Docker, another machine)</summary>
 
 By default the proxy only accepts connections from this machine. To reach it from elsewhere:
