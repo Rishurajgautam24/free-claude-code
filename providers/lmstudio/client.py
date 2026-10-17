@@ -11,12 +11,12 @@ LMSTUDIO_DEFAULT_BASE_URL = "http://localhost:1234/v1"
 
 
 class LMStudioProvider(OpenAICompatibleProvider):
-    """LM Studio provider using OpenAI-compatible local API."""
+    """Plain OpenAI-compatible provider: LM Studio, and the other OpenAI-compatible APIs."""
 
-    def __init__(self, config: ProviderConfig):
+    def __init__(self, config: ProviderConfig, provider_name: str = "LMSTUDIO"):
         super().__init__(
             config,
-            provider_name="LMSTUDIO",
+            provider_name=provider_name,
             base_url=config.base_url or LMSTUDIO_DEFAULT_BASE_URL,
             api_key=config.api_key or "lm-studio",
         )

@@ -31,7 +31,7 @@ A lightweight proxy that routes Claude Code's Anthropic API calls to **NVIDIA NI
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | **Zero Cost**              | 40 req/min free on NVIDIA NIM. Free models on OpenRouter. Fully local with LM Studio                                 |
 | **Drop-in Replacement**    | Set 2 env vars. No modifications to Claude Code CLI or VSCode extension needed                                       |
-| **3 Providers**            | NVIDIA NIM, OpenRouter (hundreds of models), LM Studio (local & offline)                                             |
+| **10 Providers**           | NVIDIA NIM, OpenRouter, LM Studio, Ollama, Groq, Gemini, Cerebras, Mistral, DeepSeek, Together + any OpenAI-compatible API |
 | **Per-Model Mapping**      | Route Opus / Sonnet / Haiku requests to different models and providers. Mix providers freely per model               |
 | **Thinking Token Support** | Parses `<think>` tags and `reasoning_content` into native Claude thinking blocks                                     |
 | **Robust Tool Calls**      | Native and text-written tool calls become real tool use, even when providers stream ids and names in pieces          |
@@ -103,6 +103,33 @@ MODEL_OPUS="lmstudio/unsloth/MiniMax-M2.5-GGUF"
 MODEL_SONNET="lmstudio/unsloth/Qwen3.5-35B-A3B-GGUF"
 MODEL_HAIKU="lmstudio/unsloth/GLM-4.7-Flash-GGUF"
 MODEL="lmstudio/unsloth/GLM-4.7-Flash-GGUF"         # fallback
+```
+
+</details>
+
+<details>
+<summary><b>Groq, Gemini, Ollama & any OpenAI-compatible API</b></summary>
+
+Built-in presets only need an API key; use the provider name as the `MODEL` prefix:
+
+```dotenv
+GROQ_API_KEY="gsk_..."            # also: CEREBRAS_, GEMINI_, MISTRAL_, DEEPSEEK_, TOGETHER_API_KEY
+MODEL="groq/llama-3.3-70b-versatile"
+MODEL_HAIKU="gemini/gemini-2.5-flash"   # needs GEMINI_API_KEY
+```
+
+Local Ollama needs no key (`OLLAMA_BASE_URL` defaults to `http://localhost:11434/v1`):
+
+```dotenv
+MODEL="ollama/qwen3-coder"
+```
+
+Anything else that speaks the OpenAI chat API (vLLM, llama.cpp server, a company gateway, ...):
+
+```dotenv
+CUSTOM_BASE_URL="https://llm.example.com/v1"
+CUSTOM_API_KEY="..."              # optional
+MODEL="custom/my-model"
 ```
 
 </details>
@@ -261,19 +288,29 @@ alias claude-kimi='ANTHROPIC_BASE_URL="http://localhost:8082" ANTHROPIC_AUTH_TOK
 
 ## Providers
 
-| Provider       | Cost         | Rate Limit | Models                            | Best For                             |
-| -------------- | ------------ | ---------- | --------------------------------- | ------------------------------------ |
-| **NVIDIA NIM** | Free         | 40 req/min | Kimi K2, GLM5, Devstral, MiniMax  | Daily driver, generous free tier     |
-| **OpenRouter** | Free / Paid  | Varies     | 200+ (GPT-4o, Claude, Step, etc.) | Model variety, fallback options      |
-| **LM Studio**  | Free (local) | Unlimited  | Any GGUF model                    | Privacy, offline use, no rate limits |
+| Provider                                                | Cost              | Rate Limit | Models                            | Best For                             |
+| ------------------------------------------------------- | ----------------- | ---------- | --------------------------------- | ------------------------------------ |
+| **NVIDIA NIM**                                          | Free              | 40 req/min | Kimi K2, GLM5, Devstral, MiniMax  | Daily driver, generous free tier     |
+| **OpenRouter**                                          | Free / Paid       | Varies     | 200+ (GPT-4o, Claude, Step, etc.) | Model variety, fallback options      |
+| **LM Studio**                                           | Free (local)      | Unlimited  | Any GGUF model                    | Privacy, offline use, no rate limits |
+| **Ollama**                                              | Free (local)      | Unlimited  | Any Ollama model                  | Local models with a simple CLI       |
+| **Groq, Gemini, Cerebras, Mistral, DeepSeek, Together** | Free tiers / Paid | Varies     | Each provider's catalog           | Fast inference, fallback chains      |
 
-Switch providers by changing `MODEL` in `.env`. Use the prefix format `provider/model/name`. Invalid prefix causes an error.
+Switch providers by changing `MODEL` in `.env`. Use the prefix format `provider/model/name`. Invalid prefix causes an error. A provider whose key is missing answers with a clear error naming the variable to set.
 
-| Provider   | MODEL prefix      | API Key Variable     | Base URL                      |
-| ---------- | ----------------- | -------------------- | ----------------------------- |
-| NVIDIA NIM | `nvidia_nim/...`  | `NVIDIA_NIM_API_KEY` | `integrate.api.nvidia.com/v1` |
-| OpenRouter | `open_router/...` | `OPENROUTER_API_KEY` | `openrouter.ai/api/v1`        |
-| LM Studio  | `lmstudio/...`    | (none)               | `localhost:1234/v1`           |
+| Provider              | MODEL prefix      | API Key Variable            | Base URL                                          |
+| --------------------- | ----------------- | --------------------------- | ------------------------------------------------- |
+| NVIDIA NIM            | `nvidia_nim/...`  | `NVIDIA_NIM_API_KEY`        | `integrate.api.nvidia.com/v1`                     |
+| OpenRouter            | `open_router/...` | `OPENROUTER_API_KEY`        | `openrouter.ai/api/v1`                            |
+| LM Studio             | `lmstudio/...`    | (none)                      | `localhost:1234/v1` (`LM_STUDIO_BASE_URL`)        |
+| Ollama                | `ollama/...`      | (none)                      | `localhost:11434/v1` (`OLLAMA_BASE_URL`)          |
+| Groq                  | `groq/...`        | `GROQ_API_KEY`              | `api.groq.com/openai/v1`                          |
+| Cerebras              | `cerebras/...`    | `CEREBRAS_API_KEY`          | `api.cerebras.ai/v1`                              |
+| Google Gemini         | `gemini/...`      | `GEMINI_API_KEY`            | `generativelanguage.googleapis.com/v1beta/openai` |
+| Mistral               | `mistral/...`     | `MISTRAL_API_KEY`           | `api.mistral.ai/v1`                               |
+| DeepSeek              | `deepseek/...`    | `DEEPSEEK_API_KEY`          | `api.deepseek.com/v1`                             |
+| Together AI           | `together/...`    | `TOGETHER_API_KEY`          | `api.together.xyz/v1`                             |
+| Any OpenAI-compatible | `custom/...`      | `CUSTOM_API_KEY` (optional) | `CUSTOM_BASE_URL`                                 |
 
 LM Studio runs locally. Start the server in the Developer tab or via `lms server start`, load a model, and set `MODEL` to the model identifier.
 
@@ -441,41 +478,45 @@ Browse: [model.lmstudio.ai](https://model.lmstudio.ai)
 
 ## Configuration
 
-| Variable                          | Description                                                                                     | Default                                           |
-| --------------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| `MODEL`                           | Default model (`provider/model/name`); comma-separate a chain to fall back on errors            | `nvidia_nim/stepfun-ai/step-3.5-flash`            |
-| `MODEL_OPUS`                      | Model for Claude Opus requests (optional, falls back to `MODEL`)                                | `nvidia_nim/z-ai/glm4.7`                          |
-| `MODEL_SONNET`                    | Model for Claude Sonnet requests (optional, falls back to `MODEL`)                              | `open_router/arcee-ai/trinity-large-preview:free` |
-| `MODEL_HAIKU`                     | Model for Claude Haiku requests (optional, falls back to `MODEL`)                               | `open_router/stepfun/step-3.5-flash:free`         |
-| `NVIDIA_NIM_API_KEY`              | NVIDIA API key (NIM provider)                                                                   | required                                          |
-| `OPENROUTER_API_KEY`              | OpenRouter API key (OpenRouter provider)                                                        | required                                          |
-| `LM_STUDIO_BASE_URL`              | LM Studio server URL                                                                            | `http://localhost:1234/v1`                        |
-| `HOST`                            | Interface the proxy listens on (`python server.py`); use `0.0.0.0` only with `PROXY_AUTH_TOKEN` | `127.0.0.1`                                       |
-| `PROXY_AUTH_TOKEN`                | Token clients must send as `ANTHROPIC_AUTH_TOKEN` (empty = no check)                            | `""`                                              |
-| `LOG_LEVEL`                       | `server.log` level; `DEBUG` also logs full request payloads (prompts, files)                    | `INFO`                                            |
-| `PROVIDER_RATE_LIMIT`             | LLM API requests per window, per provider                                                       | `40`                                              |
-| `PROVIDER_RATE_WINDOW`            | Rate limit window (seconds)                                                                     | `60`                                              |
-| `PROVIDER_MAX_CONCURRENCY`        | Max simultaneous open streams, per provider                                                     | `5`                                               |
-| `HTTP_READ_TIMEOUT`               | Read timeout for provider API requests (seconds)                                                | `120`                                             |
-| `HTTP_WRITE_TIMEOUT`              | Write timeout for provider API requests (seconds)                                               | `10`                                              |
-| `HTTP_CONNECT_TIMEOUT`            | Connect timeout for provider API requests (seconds)                                             | `2`                                               |
-| `FAST_PREFIX_DETECTION`           | Enable fast prefix detection                                                                    | `true`                                            |
-| `ENABLE_NETWORK_PROBE_MOCK`       | Enable network probe mock                                                                       | `true`                                            |
-| `ENABLE_TITLE_GENERATION_SKIP`    | Skip title generation                                                                           | `true`                                            |
-| `ENABLE_SUGGESTION_MODE_SKIP`     | Skip suggestion mode                                                                            | `true`                                            |
-| `ENABLE_FILEPATH_EXTRACTION_MOCK` | Enable filepath extraction mock                                                                 | `true`                                            |
-| `MESSAGING_PLATFORM`              | Messaging platform: `discord` or `telegram`                                                     | `discord`                                         |
-| `DISCORD_BOT_TOKEN`               | Discord Bot Token                                                                               | `""`                                              |
-| `ALLOWED_DISCORD_CHANNELS`        | Comma-separated channel IDs (empty = none allowed)                                              | `""`                                              |
-| `TELEGRAM_BOT_TOKEN`              | Telegram Bot Token                                                                              | `""`                                              |
-| `ALLOWED_TELEGRAM_USER_ID`        | Allowed Telegram User ID (empty = nobody allowed)                                               | `""`                                              |
-| `VOICE_NOTE_ENABLED`              | Enable voice note handling                                                                      | `true`                                            |
-| `WHISPER_MODEL`                   | Local Whisper model size                                                                        | `base`                                            |
-| `WHISPER_DEVICE`                  | `cpu` \                                                                                         | `cuda`                                            |
-| `MESSAGING_RATE_LIMIT`            | Messaging messages per window                                                                   | `1`                                               |
-| `MESSAGING_RATE_WINDOW`           | Messaging window (seconds)                                                                      | `1`                                               |
-| `CLAUDE_WORKSPACE`                | Directory for agent workspace                                                                   | `./agent_workspace`                               |
-| `ALLOWED_DIR`                     | Allowed directories for agent                                                                   | `""`                                              |
+| Variable                            | Description                                                                                     | Default                                           |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `MODEL`                             | Default model (`provider/model/name`); comma-separate a chain to fall back on errors            | `nvidia_nim/stepfun-ai/step-3.5-flash`            |
+| `MODEL_OPUS`                        | Model for Claude Opus requests (optional, falls back to `MODEL`)                                | `nvidia_nim/z-ai/glm4.7`                          |
+| `MODEL_SONNET`                      | Model for Claude Sonnet requests (optional, falls back to `MODEL`)                              | `open_router/arcee-ai/trinity-large-preview:free` |
+| `MODEL_HAIKU`                       | Model for Claude Haiku requests (optional, falls back to `MODEL`)                               | `open_router/stepfun/step-3.5-flash:free`         |
+| `NVIDIA_NIM_API_KEY`                | NVIDIA API key (NIM provider)                                                                   | required                                          |
+| `OPENROUTER_API_KEY`                | OpenRouter API key (OpenRouter provider)                                                        | required                                          |
+| `LM_STUDIO_BASE_URL`                | LM Studio server URL                                                                            | `http://localhost:1234/v1`                        |
+| `OLLAMA_BASE_URL`                   | Ollama server URL                                                                               | `http://localhost:11434/v1`                       |
+| `GROQ_API_KEY` … `TOGETHER_API_KEY` | Keys for the Groq, Cerebras, Gemini, Mistral, DeepSeek and Together presets                     | `""`                                              |
+| `CUSTOM_BASE_URL`                   | Any OpenAI-compatible endpoint, used as `custom/<model>`                                        | `""`                                              |
+| `CUSTOM_API_KEY`                    | API key for `CUSTOM_BASE_URL` (optional)                                                        | `""`                                              |
+| `HOST`                              | Interface the proxy listens on (`python server.py`); use `0.0.0.0` only with `PROXY_AUTH_TOKEN` | `127.0.0.1`                                       |
+| `PROXY_AUTH_TOKEN`                  | Token clients must send as `ANTHROPIC_AUTH_TOKEN` (empty = no check)                            | `""`                                              |
+| `LOG_LEVEL`                         | `server.log` level; `DEBUG` also logs full request payloads (prompts, files)                    | `INFO`                                            |
+| `PROVIDER_RATE_LIMIT`               | LLM API requests per window, per provider                                                       | `40`                                              |
+| `PROVIDER_RATE_WINDOW`              | Rate limit window (seconds)                                                                     | `60`                                              |
+| `PROVIDER_MAX_CONCURRENCY`          | Max simultaneous open streams, per provider                                                     | `5`                                               |
+| `HTTP_READ_TIMEOUT`                 | Read timeout for provider API requests (seconds)                                                | `120`                                             |
+| `HTTP_WRITE_TIMEOUT`                | Write timeout for provider API requests (seconds)                                               | `10`                                              |
+| `HTTP_CONNECT_TIMEOUT`              | Connect timeout for provider API requests (seconds)                                             | `2`                                               |
+| `FAST_PREFIX_DETECTION`             | Enable fast prefix detection                                                                    | `true`                                            |
+| `ENABLE_NETWORK_PROBE_MOCK`         | Enable network probe mock                                                                       | `true`                                            |
+| `ENABLE_TITLE_GENERATION_SKIP`      | Skip title generation                                                                           | `true`                                            |
+| `ENABLE_SUGGESTION_MODE_SKIP`       | Skip suggestion mode                                                                            | `true`                                            |
+| `ENABLE_FILEPATH_EXTRACTION_MOCK`   | Enable filepath extraction mock                                                                 | `true`                                            |
+| `MESSAGING_PLATFORM`                | Messaging platform: `discord` or `telegram`                                                     | `discord`                                         |
+| `DISCORD_BOT_TOKEN`                 | Discord Bot Token                                                                               | `""`                                              |
+| `ALLOWED_DISCORD_CHANNELS`          | Comma-separated channel IDs (empty = none allowed)                                              | `""`                                              |
+| `TELEGRAM_BOT_TOKEN`                | Telegram Bot Token                                                                              | `""`                                              |
+| `ALLOWED_TELEGRAM_USER_ID`          | Allowed Telegram User ID (empty = nobody allowed)                                               | `""`                                              |
+| `VOICE_NOTE_ENABLED`                | Enable voice note handling                                                                      | `true`                                            |
+| `WHISPER_MODEL`                     | Local Whisper model size                                                                        | `base`                                            |
+| `WHISPER_DEVICE`                    | `cpu` \                                                                                         | `cuda`                                            |
+| `MESSAGING_RATE_LIMIT`              | Messaging messages per window                                                                   | `1`                                               |
+| `MESSAGING_RATE_WINDOW`             | Messaging window (seconds)                                                                      | `1`                                               |
+| `CLAUDE_WORKSPACE`                  | Directory for agent workspace                                                                   | `./agent_workspace`                               |
+| `ALLOWED_DIR`                       | Allowed directories for agent                                                                   | `""`                                              |
 
 See [`.env.example`](.env.example) for all supported parameters.
 
