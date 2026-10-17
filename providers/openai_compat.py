@@ -8,7 +8,7 @@ from typing import Any
 
 import httpx
 from loguru import logger
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, BadRequestError
 
 from providers.base import BaseProvider, ProviderConfig
 from providers.common import (
@@ -21,6 +21,7 @@ from providers.common import (
     map_error,
     map_stop_reason,
 )
+from providers.common.message_converter import has_images, strip_images
 from providers.exceptions import RateLimitError
 from providers.rate_limit import ProviderRateLimiter
 
@@ -42,6 +43,8 @@ class OpenAICompatibleProvider(BaseProvider):
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
         self._nim_settings = nim_settings
+        # Models that rejected image input; their requests are sent without images.
+        self._text_only_models: set[str] = set()
         self._rate_limiter = ProviderRateLimiter(
             rate_limit=config.rate_limit,
             rate_window=config.rate_window,
@@ -140,6 +143,8 @@ class OpenAICompatibleProvider(BaseProvider):
         sse = SSEBuilder(message_id, request.model, input_tokens)
 
         body = self._build_request_body(request)
+        if body.get("model") in self._text_only_models:
+            body = strip_images(body)
         req_tag = f" request_id={request_id}" if request_id else ""
         logger.info(
             "{}_STREAM:{} model={} msgs={} tools={}",
@@ -163,9 +168,23 @@ class OpenAICompatibleProvider(BaseProvider):
 
         async with self._rate_limiter.concurrency_slot():
             try:
-                stream = await self._rate_limiter.execute_with_retry(
-                    self._client.chat.completions.create, **body, stream=True
-                )
+                try:
+                    stream = await self._rate_limiter.execute_with_retry(
+                        self._client.chat.completions.create, **body, stream=True
+                    )
+                except BadRequestError:
+                    if not has_images(body):
+                        raise
+                    logger.warning(
+                        "{}: {} rejected image input, retrying without images",
+                        tag,
+                        body.get("model"),
+                    )
+                    self._text_only_models.add(body.get("model", ""))
+                    body = strip_images(body)
+                    stream = await self._rate_limiter.execute_with_retry(
+                        self._client.chat.completions.create, **body, stream=True
+                    )
                 async for chunk in stream:
                     if getattr(chunk, "usage", None):
                         usage_info = chunk.usage
