@@ -22,6 +22,7 @@ from providers.common import (
     map_stop_reason,
 )
 from providers.common.message_converter import has_images, strip_images
+from providers.common.utils import max_tokens_limit
 from providers.exceptions import RateLimitError
 from providers.rate_limit import ProviderRateLimiter
 
@@ -43,8 +44,9 @@ class OpenAICompatibleProvider(BaseProvider):
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
         self._nim_settings = nim_settings
-        # Models that rejected image input; their requests are sent without images.
+        # Learned from 400s: models without image input, and their max output tokens.
         self._text_only_models: set[str] = set()
+        self._max_tokens_caps: dict[str, int] = {}
         self._rate_limiter = ProviderRateLimiter(
             rate_limit=config.rate_limit,
             rate_window=config.rate_window,
@@ -110,6 +112,33 @@ class OpenAICompatibleProvider(BaseProvider):
 
             yield sse.emit_tool_delta(tc_index, args)
 
+    async def _open_stream(self, body: dict, tag: str) -> Any:
+        """Start the stream, retrying 400s we can fix: output limit, then images."""
+        while True:
+            try:
+                return await self._rate_limiter.execute_with_retry(
+                    self._client.chat.completions.create, **body, stream=True
+                )
+            except BadRequestError as e:
+                fixed = self._fix_bad_request(body, str(e), tag)
+                if fixed is None:
+                    raise
+                body = fixed  # each fix strictly shrinks the request, so this ends
+
+    def _fix_bad_request(self, body: dict, error: str, tag: str) -> dict | None:
+        """A smaller request the provider should accept, remembered per model, or None."""
+        model = body.get("model", "")
+        limit = max_tokens_limit(error, body.get("max_tokens"))
+        if limit:
+            logger.warning("{}: {} allows max_tokens={}, retrying", tag, model, limit)
+            self._max_tokens_caps[model] = limit
+            return {**body, "max_tokens": limit}
+        if has_images(body):
+            logger.warning("{}: {} rejected images, retrying without", tag, model)
+            self._text_only_models.add(model)
+            return strip_images(body)
+        return None
+
     def _flush_task_arg_buffers(self, sse: SSEBuilder) -> Iterator[str]:
         """Emit buffered Task args as a single JSON delta (best-effort)."""
         for tool_index, out in sse.blocks.flush_task_arg_buffers():
@@ -143,8 +172,12 @@ class OpenAICompatibleProvider(BaseProvider):
         sse = SSEBuilder(message_id, request.model, input_tokens)
 
         body = self._build_request_body(request)
-        if body.get("model") in self._text_only_models:
+        model = body.get("model", "")
+        if model in self._text_only_models:
             body = strip_images(body)
+        cap = self._max_tokens_caps.get(model)
+        if cap and body.get("max_tokens", 0) > cap:
+            body["max_tokens"] = cap
         req_tag = f" request_id={request_id}" if request_id else ""
         logger.info(
             "{}_STREAM:{} model={} msgs={} tools={}",
@@ -168,23 +201,7 @@ class OpenAICompatibleProvider(BaseProvider):
 
         async with self._rate_limiter.concurrency_slot():
             try:
-                try:
-                    stream = await self._rate_limiter.execute_with_retry(
-                        self._client.chat.completions.create, **body, stream=True
-                    )
-                except BadRequestError:
-                    if not has_images(body):
-                        raise
-                    logger.warning(
-                        "{}: {} rejected image input, retrying without images",
-                        tag,
-                        body.get("model"),
-                    )
-                    self._text_only_models.add(body.get("model", ""))
-                    body = strip_images(body)
-                    stream = await self._rate_limiter.execute_with_retry(
-                        self._client.chat.completions.create, **body, stream=True
-                    )
+                stream = await self._open_stream(body, tag)
                 async for chunk in stream:
                     if getattr(chunk, "usage", None):
                         usage_info = chunk.usage
