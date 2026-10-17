@@ -113,3 +113,20 @@ async def test_on_telegram_message_unauthorized(telegram_platform):
     await telegram_platform._on_telegram_message(mock_update, MagicMock())
 
     handler.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_on_telegram_message_no_allowed_user_denies_everyone(monkeypatch):
+    monkeypatch.delenv("ALLOWED_TELEGRAM_USER_ID", raising=False)
+    with patch("messaging.platforms.telegram.TELEGRAM_AVAILABLE", True):
+        platform = TelegramPlatform(bot_token="test_token", allowed_user_id=None)
+    handler = AsyncMock()
+    platform.on_message(handler)
+
+    mock_update = MagicMock()
+    mock_update.message.text = "hello"
+    mock_update.effective_user.id = 12345
+
+    await platform._on_telegram_message(mock_update, MagicMock())
+
+    handler.assert_not_called()

@@ -186,6 +186,10 @@ class TelegramPlatform(MessagingPlatform):
                     target,
                     startup_text,
                 )
+            else:
+                logger.warning(
+                    "ALLOWED_TELEGRAM_USER_ID is not set: the bot ignores all messages"
+                )
         except Exception as e:
             logger.warning(f"Could not send startup message: {e}")
 
@@ -490,8 +494,8 @@ class TelegramPlatform(MessagingPlatform):
         user_id = str(update.effective_user.id)
         chat_id = str(update.effective_chat.id)
 
-        # Security check
-        if self.allowed_user_id and user_id != str(self.allowed_user_id).strip():
+        # Security check: no allowed user configured means nobody is allowed
+        if user_id != str(self.allowed_user_id or "").strip():
             logger.warning(f"Unauthorized access attempt from {user_id}")
             return
 
@@ -566,7 +570,7 @@ class TelegramPlatform(MessagingPlatform):
         user_id = str(update.effective_user.id)
         chat_id = str(update.effective_chat.id)
 
-        if self.allowed_user_id and user_id != str(self.allowed_user_id).strip():
+        if user_id != str(self.allowed_user_id or "").strip():
             logger.warning(f"Unauthorized voice access attempt from {user_id}")
             return
 
