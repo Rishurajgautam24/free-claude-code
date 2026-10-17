@@ -105,6 +105,8 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8082
     log_file: str = "server.log"
+    # DEBUG also logs full request payloads (prompts, file contents) to log_file
+    log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
     # Empty = no auth check. Clients send it as ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY.
     proxy_auth_token: str = Field(default="", validation_alias="PROXY_AUTH_TOKEN")
 

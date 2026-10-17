@@ -20,7 +20,7 @@ os.environ["PTB_TIMEDELTA"] = "1"
 
 # Configure logging first (before any module logs)
 _settings = get_settings()
-configure_logging(_settings.log_file)
+configure_logging(_settings.log_file, level=_settings.log_level.upper())
 
 
 _SHUTDOWN_TIMEOUT_S = 5.0

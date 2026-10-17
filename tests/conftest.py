@@ -2,12 +2,15 @@ import asyncio
 import contextlib
 import logging
 import os
+import tempfile
 
 import pytest
 
 # Set mock environment BEFORE any imports that use Settings
 os.environ.setdefault("NVIDIA_NIM_API_KEY", "test_key")
 os.environ.setdefault("MODEL", "nvidia_nim/test-model")
+# Importing api.app configures logging, which truncates the log file: keep it out of the repo.
+os.environ.setdefault("LOG_FILE", os.path.join(tempfile.gettempdir(), "fcc-test.log"))
 os.environ["PTB_TIMEDELTA"] = "1"
 
 from typing import Any

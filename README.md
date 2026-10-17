@@ -410,6 +410,7 @@ Browse: [model.lmstudio.ai](https://model.lmstudio.ai)
 | `OPENROUTER_API_KEY`              | OpenRouter API key (OpenRouter provider)                                           | required                                          |
 | `LM_STUDIO_BASE_URL`              | LM Studio server URL                                                               | `http://localhost:1234/v1`                        |
 | `PROXY_AUTH_TOKEN`                | Token clients must send as `ANTHROPIC_AUTH_TOKEN` (empty = no check)               | `""`                                              |
+| `LOG_LEVEL`                       | `server.log` level; `DEBUG` also logs full request payloads (prompts, files)      | `INFO`                                            |
 | `PROVIDER_RATE_LIMIT`             | LLM API requests per window                                                        | `40`                                              |
 | `PROVIDER_RATE_WINDOW`            | Rate limit window (seconds)                                                        | `60`                                              |
 | `PROVIDER_MAX_CONCURRENCY`        | Max simultaneous open provider streams                                             | `5`                                               |

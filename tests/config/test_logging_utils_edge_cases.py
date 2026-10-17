@@ -57,8 +57,7 @@ def test_get_tool_names_supports_objects_dicts_and_overflow():
     assert names[-1].startswith("+")
 
 
-def test_log_request_compact_logs_summary_and_full_payload():
-    logger = MagicMock()
+def _request_data():
     request_data = MagicMock()
     request_data.model = "m"
     request_data.messages = []
@@ -66,34 +65,31 @@ def test_log_request_compact_logs_summary_and_full_payload():
     request_data.system = None
     request_data.thinking = None
     request_data.max_tokens = 1
+    return request_data
+
+
+def test_log_request_compact_logs_summary_and_lazy_full_payload():
+    logger = MagicMock()
+    request_data = _request_data()
     request_data.model_dump.return_value = {"model": "m"}
 
     log_request_compact(logger, "req_1", request_data)
     assert logger.info.call_count == 1
-    assert logger.debug.call_count >= 1  # full payload
+    logger.opt.assert_called_once_with(lazy=True)
+    message, dump = logger.opt.return_value.debug.call_args.args
+    assert message == "FULL_PAYLOAD [req_1]: {}"
+    request_data.model_dump.assert_not_called()  # nothing serialized unless DEBUG
+    assert dump() == '{"model": "m"}'
 
 
 def test_log_request_compact_handles_model_dump_failures():
     logger = MagicMock()
-    request_data = MagicMock()
-    request_data.model = "m"
-    request_data.messages = []
-    request_data.tools = []
-    request_data.system = None
-    request_data.thinking = None
-    request_data.max_tokens = 1
+    request_data = _request_data()
     request_data.model_dump.side_effect = RuntimeError("nope")
 
-    from providers import logging_utils as logging_utils_mod
+    log_request_compact(logger, "req_1", request_data)
 
-    module_logger = MagicMock()
-    old_logger = logging_utils_mod.logger
-    logging_utils_mod.logger = module_logger
-    try:
-        log_request_compact(logger, "req_1", request_data)
-    finally:
-        logging_utils_mod.logger = old_logger
-
-    # We should still log a compact summary even if payload dump fails.
+    # The compact summary is still logged, and the lazy dump reports the failure.
     assert logger.info.call_count == 1
-    assert module_logger.debug.call_count >= 1
+    (_, dump) = logger.opt.return_value.debug.call_args.args
+    assert dump() == "<could not dump request data: nope>"

@@ -57,7 +57,9 @@ class InterceptHandler(logging.Handler):
         )
 
 
-def configure_logging(log_file: str, *, force: bool = False) -> None:
+def configure_logging(
+    log_file: str, *, level: str = "INFO", force: bool = False
+) -> None:
     """Configure loguru with JSON output to log_file and intercept stdlib logging.
 
     Idempotent: skips if already configured (e.g. hot reload).
@@ -74,10 +76,11 @@ def configure_logging(log_file: str, *, force: bool = False) -> None:
     # Truncate log file on fresh start for clean debugging
     Path(log_file).write_text("")
 
-    # Add file sink: JSON lines, DEBUG level, context vars at top level
+    # File sink: JSON lines, context vars at top level; enqueue keeps writes off the event loop
     logger.add(
         log_file,
-        level="DEBUG",
+        level=level,
+        enqueue=True,
         format=_serialize_with_context,
         encoding="utf-8",
         mode="a",
@@ -87,4 +90,4 @@ def configure_logging(log_file: str, *, force: bool = False) -> None:
     # Intercept stdlib logging: route all root logger output to loguru
     intercept = InterceptHandler()
     logging.root.handlers = [intercept]
-    logging.root.setLevel(logging.DEBUG)
+    logging.root.setLevel(level)
