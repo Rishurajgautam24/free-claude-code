@@ -1,0 +1,7 @@
+services:
+  proxy:
+    build: .
+    env_file: .env
+    ports:
+      - "127.0.0.1:8082:8082" # this machine only; see README before exposing it
+    restart: unless-stopped
