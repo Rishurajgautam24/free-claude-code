@@ -238,11 +238,11 @@ Picking one (its ID looks like `claude-fcc/groq/llama-3.3-70b-versatile`) sends 
 <details>
 <summary><b>Multi-Model Support (Model Picker)</b></summary>
 
-`claude-pick` is an interactive model selector that lets you choose any model from your active provider each time you launch Claude, without editing `MODEL` in `.env`.
+`claude-pick` lets you choose any model a provider offers, its full catalog, each time you launch Claude, without editing `MODEL` in `.env`. It works with every provider (NIM, OpenRouter, LM Studio, Ollama, Groq, Gemini, …): the running proxy fetches the list with the key from your `.env`.
 
 https://github.com/user-attachments/assets/9a33c316-90f8-4418-9650-97e7d33ad645
 
-**1. Install [fzf](https://github.com/junegunn/fzf)** (highly recommended for the interactive picker):
+**1. Install [fzf](https://github.com/junegunn/fzf)** (required for the interactive picker):
 
 ```bash
 brew install fzf        # macOS/Linux
@@ -255,9 +255,15 @@ brew install fzf        # macOS/Linux
 alias claude-pick="/absolute/path/to/free-claude-code/claude-pick"
 ```
 
-Then reload your shell (`source ~/.zshrc` or `source ~/.bashrc`) and run `claude-pick` to pick a model and launch Claude.
+Then reload your shell (`source ~/.zshrc` or `source ~/.bashrc`), start the proxy, and run:
 
-Under the hood the picker sends the model in the token as `<token>:provider/model` (the token is `PROXY_AUTH_TOKEN`, or `freecc` when that's unset), which overrides the model from `.env` for that session.
+```bash
+claude-pick              # models of the provider in your MODEL setting
+claude-pick groq         # or name a provider: groq, gemini, open_router, ollama, ...
+claude-pick gemini -c    # extra arguments go to claude
+```
+
+It launches `claude --model claude-fcc/<provider>/<model>`, which the proxy routes to that model.
 
 **Skip the picker with a fixed model** (no picker needed):
 
