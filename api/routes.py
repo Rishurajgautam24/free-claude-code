@@ -4,9 +4,11 @@ import json
 import traceback
 import uuid
 
+import anyio
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from loguru import logger
+from starlette.types import Message, Send
 
 from config.settings import Settings
 from providers.common import get_user_facing_error_message
@@ -20,6 +22,47 @@ from .optimization_handlers import try_optimizations
 from .request_utils import get_token_count
 
 router = APIRouter()
+
+PING_MESSAGE: Message = {
+    "type": "http.response.body",
+    "body": b'event: ping\ndata: {"type": "ping"}\n\n',
+    "more_body": True,
+}
+
+
+class KeepAliveStreamingResponse(StreamingResponse):
+    """StreamingResponse that also sends an SSE ping every `ping_interval` seconds.
+
+    Claude Code aborts a stream after ~5 minutes without bytes, e.g. while a
+    request waits for a provider concurrency slot. The body is still iterated in
+    the response task, so client-disconnect cancellation works as before.
+    """
+
+    ping_interval = 15.0
+
+    async def stream_response(self, send: Send) -> None:
+        finished = False
+
+        async def tracking_send(message: Message) -> None:
+            nonlocal finished
+            if message["type"] == "http.response.body" and not message.get(
+                "more_body", False
+            ):
+                finished = True  # no pings after the final body message
+            await send(message)
+
+        async def ping() -> None:
+            while True:
+                await anyio.sleep(self.ping_interval)
+                if not finished:
+                    await send(PING_MESSAGE)
+
+        # shortcut: errors leave as an ExceptionGroup; Starlette unwraps them on ASGI
+        # spec 2.3 (uvicorn), but not on 2.4 servers. Unwrap here if we support one.
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(ping)
+            await super().stream_response(tracking_send)
+            tg.cancel_scope.cancel()
 
 
 # =============================================================================
@@ -58,7 +101,7 @@ async def create_message(
         input_tokens = get_token_count(
             request_data.messages, request_data.system, request_data.tools
         )
-        return StreamingResponse(
+        return KeepAliveStreamingResponse(
             provider.stream_response(
                 request_data,
                 input_tokens=input_tokens,
